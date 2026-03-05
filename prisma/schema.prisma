@@ -1,0 +1,226 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id            String   @id @default(cuid())
+  title         String
+  genre         String?
+  format        String   @default("film") // film/series/short
+  budgetCap     Float    @default(0)
+  currency      String   @default("INR")
+  startDate     DateTime?
+  endDate       DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  shootDays     ShootDay[]
+  scenes        Scene[]
+  castMembers   CastMember[]
+  locations     Location[]
+  equipment     Equipment[]
+  crewMembers   CrewMember[]
+  shots         Shot[]
+  budgetChanges BudgetChangeLog[]
+}
+
+model ShootDay {
+  id                  String   @id @default(cuid())
+  projectId           String
+  dayNumber           Int
+  date                DateTime?
+  callTime            String?
+  estimatedWrap       String?
+  dayType             String   @default("full") // full/half/company_move
+  isTravelDay         Boolean  @default(false)
+  weatherContingency  Boolean  @default(false)
+  notes               String?
+  order               Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  location            Location? @relation(fields: [locationId], references: [id])
+  locationId          String?
+  scenes              Scene[]
+  equipmentLinks      EquipmentDayLink[]
+
+  @@index([projectId])
+}
+
+model Scene {
+  id            String   @id @default(cuid())
+  projectId     String
+  shootDayId    String?
+  sceneNumber   String
+  sceneName     String
+  intExt        String   @default("INT") // INT/EXT
+  dayNight      String   @default("DAY") // DAY/NIGHT
+  pageCount     Float    @default(1)
+  synopsis      String?
+  scriptPageRef String?
+  status        String   @default("unscheduled") // scheduled/unscheduled/completed
+  order         Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  shootDay      ShootDay?   @relation(fields: [shootDayId], references: [id])
+  castLinks     CastSceneLink[]
+  shots         Shot[]
+
+  @@index([projectId])
+  @@index([shootDayId])
+}
+
+model CastMember {
+  id               String   @id @default(cuid())
+  projectId        String
+  name             String
+  characterName    String?
+  roleType         String   @default("lead") // lead/supporting/day_player/extra
+  dayRate          Float    @default(0)
+  travelRequired   Boolean  @default(false)
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sceneLinks       CastSceneLink[]
+
+  @@index([projectId])
+}
+
+model CastSceneLink {
+  id           String   @id @default(cuid())
+  castId       String
+  sceneId      String
+  createdAt    DateTime @default(now())
+
+  castMember   CastMember @relation(fields: [castId], references: [id], onDelete: Cascade)
+  scene        Scene      @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+
+  @@unique([castId, sceneId])
+  @@index([castId])
+  @@index([sceneId])
+}
+
+model Location {
+  id               String   @id @default(cuid())
+  projectId        String
+  name             String
+  address          String?
+  locationType     String   @default("studio") // studio/practical/outdoor
+  dailyRentalCost  Float    @default(0)
+  permitCost       Float    @default(0)
+  travelDistanceKm Float    @default(0)
+  hasPower         Boolean  @default(true)
+  hasParking       Boolean  @default(true)
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  shootDays        ShootDay[]
+
+  @@index([projectId])
+}
+
+model CrewMember {
+  id            String   @id @default(cuid())
+  projectId     String
+  name          String
+  department    String   @default("production")
+  role          String
+  dayRate       Float    @default(0)
+  overtimeRate  Float    @default(0)
+  contractedDays Int     @default(0)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Equipment {
+  id              String   @id @default(cuid())
+  projectId       String
+  name            String
+  category        String   @default("camera") // camera/lighting/grip/sound
+  dailyRental     Float    @default(0)
+  vendor          String?
+  quantityAvailable Int    @default(1)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  dayLinks        EquipmentDayLink[]
+
+  @@index([projectId])
+}
+
+model EquipmentDayLink {
+  id          String   @id @default(cuid())
+  equipmentId String
+  shootDayId  String
+  quantity    Int      @default(1)
+  createdAt   DateTime @default(now())
+
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  shootDay    ShootDay  @relation(fields: [shootDayId], references: [id], onDelete: Cascade)
+
+  @@unique([equipmentId, shootDayId])
+  @@index([equipmentId])
+  @@index([shootDayId])
+}
+
+model Shot {
+  id               String   @id @default(cuid())
+  sceneId          String
+  projectId        String
+  shotNumber       String   // e.g. 1A, 1B
+  shotType         String   @default("Wide") // Wide/Medium/Close-Up/etc
+  cameraAngle      String?
+  lensMm           Int?
+  cameraMovement   String   @default("Static")
+  durationSeconds  Int      @default(0)
+  description      String?
+  dialogueRef      String?
+  setupTimeMinutes Int      @default(15)
+  isVfx            Boolean  @default(false)
+  storyboardUrl    String?
+  order            Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  scene            Scene    @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([sceneId])
+  @@index([projectId])
+}
+
+model BudgetChangeLog {
+  id          String   @id @default(cuid())
+  projectId   String
+  changeType  String
+  description String
+  costDelta   Float    @default(0)
+  entityType  String?
+  entityId    String?
+  createdAt   DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([createdAt])
+}
