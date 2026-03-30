@@ -737,10 +737,14 @@ function parseScriptText(text: string): ParsedScene[] {
   // Also handles trailing scene numbers (common in shooting scripts): "1 INT. OFFICE - DAY 1"
   const SCENE_NUM = /(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)/;
 
-  // Standard Hollywood heading with scene numbers on left and optionally right
+  // Standard Hollywood heading with scene numbers on left and/or right
   // Location can contain dashes (e.g. "COFFEE SHOP - HALLWAY"), so we anchor on the TOD keyword
+  // Group 1: leading scene number (optional)
+  // Group 5: trailing scene number (optional) — used when leading is empty
+  // Note: In PDF text, scene numbers can be glued to DAY/NIGHT (e.g. "DAY16A 16A")
+  // so the trailing capture uses \s* (zero or more spaces) after the TOD keyword
   const headingRegex =
-    /(?:^|\n)\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?\s*\.?\s*(INT|EXT|INT\/EXT|INT\.\/EXT\.|I\/E)\.?\s+(.+?)[-\u2013\u2014]\s*(DAY|NIGHT|DAWN|DUSK|EVENING|MORNING|CONTINUOUS|LATER|SAME TIME|MAGIC HOUR)\s*(?:\d+[A-Za-z]*)?\s*$/gim;
+    /(?:^|\n)\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?\s*\.?\s*(INT|EXT|INT\/EXT|INT\.\/EXT\.|I\/E)\.?\s*(.+?)[-\u2013\u2014]\s*(DAY|NIGHT|DAWN|DUSK|EVENING|MORNING|CONTINUOUS|LATER|SAME TIME|MAGIC HOUR)\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?(?:\s+\d+[A-Za-z]*)?\s*$/gim;
 
   const lines = text.split("\n");
   let currentScene: ParsedScene | null = null;
@@ -753,8 +757,9 @@ function parseScriptText(text: string): ParsedScene[] {
       if (currentScene) scenes.push(currentScene);
       sceneNum++;
       const intExtRaw = match[2].toUpperCase().replace(/\./g, "");
+      // Use leading scene number, fall back to trailing, then auto-number
       currentScene = {
-        sceneNumber: match[1] || String(sceneNum),
+        sceneNumber: match[1] || match[5] || String(sceneNum),
         heading: match[3].trim().replace(/\s+/g, " "),
         intExt: intExtRaw.includes("EXT") ? "EXT" : "INT",
         dayNight: normalizeTOD(match[4]),
@@ -771,7 +776,7 @@ function parseScriptText(text: string): ParsedScene[] {
   // If standard regex found nothing, try a looser pattern for PDF text
   if (scenes.length === 0) {
     const looseRegex =
-      /(?:^|\n)\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?\s*\.?\s*(INT|EXT|INT\/EXT)\.?\s+(.+?)[-\u2013\u2014\s]\s*(DAY|NIGHT|DAWN|DUSK)\s*(?:\d+[A-Za-z]*)?\s*$/gim;
+      /(?:^|\n)\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?\s*\.?\s*(INT|EXT|INT\/EXT)\.?\s+(.+?)[-\u2013\u2014\s]\s*(DAY|NIGHT|DAWN|DUSK)\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?\s*$/gim;
     let looseMatch;
     let looseNum = 0;
     let lastIdx = 0;
@@ -784,7 +789,7 @@ function parseScriptText(text: string): ParsedScene[] {
       looseNum++;
       const ieRaw = looseMatch[2].toUpperCase();
       currentScene = {
-        sceneNumber: looseMatch[1] || String(looseNum),
+        sceneNumber: looseMatch[1] || looseMatch[5] || String(looseNum),
         heading: looseMatch[3].trim().replace(/[-\u2013\u2014]\s*$/, "").replace(/\s+/g, " "),
         intExt: ieRaw.includes("EXT") ? "EXT" : "INT",
         dayNight: normalizeTOD(looseMatch[4]),

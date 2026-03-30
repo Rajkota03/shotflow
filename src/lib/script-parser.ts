@@ -78,8 +78,10 @@ export function parseScenesFromText(text: string): ParsedScene[] {
     // Scene heading regex — matches INT./EXT./INT/EXT. patterns
     // Scene number captures: "1", "1A", "12B", "1-A", "1.1" etc.
     // Also handles trailing scene numbers on shooting scripts
+    // Group 1: leading scene number, Group 5: trailing scene number
+    // \s* after INT/EXT to handle PDF "INT.LOCATION" (no space)
     const headingRegex =
-        /(?:^|\n)\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?\s*\.?\s*(INT|EXT|INT\/EXT|I\/E)\.?\s+(.+?)[-–—]\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|EVENING|MORNING|LATER|SAME TIME|MAGIC HOUR)\s*(?:\d+[A-Za-z]*)?\s*$/gim;
+        /(?:^|\n)\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?\s*\.?\s*(INT|EXT|INT\/EXT|I\/E)\.?\s*(.+?)[-–—]\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|EVENING|MORNING|LATER|SAME TIME|MAGIC HOUR)\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?(?:\s+\d+[A-Za-z]*)?\s*$/gim;
 
     const matches: { index: number; sceneNumber: string; intExt: string; sceneName: string; dayNight: string }[] = [];
 
@@ -87,7 +89,7 @@ export function parseScenesFromText(text: string): ParsedScene[] {
     while ((match = headingRegex.exec(text)) !== null) {
         matches.push({
             index: match.index,
-            sceneNumber: match[1] || "",
+            sceneNumber: match[1] || match[5] || "",
             intExt: match[2].toUpperCase().replace("I/E", "INT/EXT"),
             sceneName: match[3].trim().replace(/\s+/g, " "),
             dayNight: normalizeDayNight(match[4]),
