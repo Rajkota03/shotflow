@@ -1,184 +1,416 @@
 "use client";
-import { useState, use } from "react";
+import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import { useBudgetStore } from "@/store/budget-store";
 
 interface CastMember {
-  id: string; name: string; characterName: string | null; roleType: string;
-  dayRate: number; travelRequired: boolean; notes: string | null;
+  id: string;
+  name: string;
+  characterName: string | null;
+  roleType: string;
+  dayRate: number;
+  travelRequired: boolean;
+  notes: string | null;
   sceneLinks: { scene: { id: string; sceneNumber: string; sceneName: string } }[];
 }
-interface Project { id: string; currency: string; }
 
-const ROLE_TYPES = ["lead", "supporting", "day_player", "extra"];
+interface Project {
+  id: string;
+  currency: string;
+  shootDays: { id: string; scenes: { id: string }[] }[];
+}
+
 const ROLE_COLORS: Record<string, string> = {
-  lead: "#f59e0b", supporting: "#3b82f6", day_player: "#10b981", extra: "#6b7280"
+  lead: "#f59e0b",
+  supporting: "#3b82f6",
+  day_player: "#10b981",
+  extra: "#6b7280",
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  lead: "Lead",
+  supporting: "Supporting",
+  day_player: "Day Player",
+  extra: "Extra",
 };
 
 export default function CastPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const qc = useQueryClient();
-  const refreshBudget = useBudgetStore(s => s.refreshBudget);
-  const [showAdd, setShowAdd] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", characterName: "", roleType: "lead", dayRate: "", travelRequired: false, notes: "" });
+  const refreshBudget = useBudgetStore((s) => s.refreshBudget);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editFields, setEditFields] = useState<Record<string, { name: string; dayRate: string; roleType: string }>>({});
 
-  const { data: project } = useQuery<Project>({ queryKey: ["project", id], queryFn: () => fetch(`/api/projects/${id}`).then(r => r.json()) });
-  const { data: cast = [] } = useQuery<CastMember[]>({
-    queryKey: ["cast", id],
-    queryFn: () => fetch(`/api/projects/${id}/cast`).then(r => r.json()),
+  const { data: project } = useQuery<Project>({
+    queryKey: ["project", id],
+    queryFn: () => fetch(`/api/projects/${id}`).then((r) => r.json()),
   });
 
-  const saveMutation = useMutation({
-    mutationFn: (data: typeof form) => {
-      const body = { ...data, dayRate: Number(data.dayRate) || 0 };
-      if (editId) {
-        return fetch(`/api/projects/${id}/cast/${editId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(r => r.json());
-      }
-      return fetch(`/api/projects/${id}/cast`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(r => r.json());
-    },
+  const { data: cast = [], isLoading } = useQuery<CastMember[]>({
+    queryKey: ["cast", id],
+    queryFn: () => fetch(`/api/projects/${id}/cast`).then((r) => r.json()),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ castId, data }: { castId: string; data: { name?: string; dayRate?: number; roleType?: string } }) =>
+      fetch(`/api/projects/${id}/cast/${castId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }).then((r) => r.json()),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cast", id] });
       qc.invalidateQueries({ queryKey: ["project", id] });
       refreshBudget(id);
-      setShowAdd(false); setEditId(null);
-      setForm({ name: "", characterName: "", roleType: "lead", dayRate: "", travelRequired: false, notes: "" });
+      setEditingId(null);
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (castId: string) => fetch(`/api/projects/${id}/cast/${castId}`, { method: "DELETE" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["cast", id] }); refreshBudget(id); },
+    mutationFn: (castId: string) =>
+      fetch(`/api/projects/${id}/cast/${castId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cast", id] });
+      refreshBudget(id);
+    },
   });
 
-  const startEdit = (member: CastMember) => {
-    setForm({ name: member.name, characterName: member.characterName || "", roleType: member.roleType, dayRate: String(member.dayRate), travelRequired: member.travelRequired, notes: member.notes || "" });
-    setEditId(member.id);
-    setShowAdd(true);
-  };
+  // Calculate shoot days per character
+  function getShootDays(member: CastMember): number {
+    if (!project) return 0;
+    const sceneIds = new Set(member.sceneLinks.map((l) => l.scene.id));
+    const days = new Set<string>();
+    for (const day of project.shootDays) {
+      for (const scene of day.scenes) {
+        if (sceneIds.has(scene.id)) {
+          days.add(day.id);
+          break;
+        }
+      }
+    }
+    return days.size;
+  }
 
   const currency = project?.currency || "INR";
-  const totalDailyRate = cast.reduce((s, c) => s + c.dayRate, 0);
+  const symbol = currency === "INR" ? "₹" : "$";
+
+  // Group by role type
+  const grouped = {
+    lead: cast.filter((c) => c.roleType === "lead"),
+    supporting: cast.filter((c) => c.roleType === "supporting"),
+    day_player: cast.filter((c) => c.roleType === "day_player"),
+    extra: cast.filter((c) => c.roleType === "extra"),
+  };
+
+  const totalDaily = cast.reduce((s, c) => s + c.dayRate, 0);
+
+  if (isLoading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", minHeight: 300 }}>
+        <div style={{ width: 24, height: 24, border: "2px solid var(--border-strong)", borderTopColor: "var(--blue)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      </div>
+    );
+  }
+
+  function startEdit(member: CastMember) {
+    setEditingId(member.id);
+    setEditFields((prev) => ({
+      ...prev,
+      [member.id]: {
+        name: member.name || "",
+        dayRate: String(member.dayRate || ""),
+        roleType: member.roleType,
+      },
+    }));
+  }
+
+  function saveEdit(castId: string) {
+    const fields = editFields[castId];
+    if (!fields) return;
+    updateMutation.mutate({
+      castId,
+      data: {
+        name: fields.name,
+        dayRate: Number(fields.dayRate) || 0,
+        roleType: fields.roleType,
+      },
+    });
+  }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="border-b border-[#1a1a1a] px-4 py-3 flex items-center justify-between flex-shrink-0">
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 24px 48px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
-          <h2 className="text-white font-semibold text-sm">Cast</h2>
-          <p className="text-[#555] text-xs mt-0.5">{cast.length} members · {formatCurrency(totalDailyRate, currency)}/day total</p>
+          <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 600, color: "var(--text-primary)" }}>Cast & Talent</h2>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", marginTop: 2 }}>
+            {cast.length} characters from script · {formatCurrency(totalDaily, currency)}/day total
+          </p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="px-3 py-1.5 bg-[#f59e0b] text-black text-xs font-semibold rounded-lg hover:bg-[#d97706]">
-          + Add Cast
-        </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
-        {cast.length === 0 ? (
-          <div className="text-center py-12 text-[#555] text-sm">No cast members yet.</div>
-        ) : (
-          <div className="space-y-2">
-            {/* Header */}
-            <div className="grid grid-cols-[1fr_100px_80px_100px_80px_60px] gap-3 px-4 py-2 text-[10px] text-[#444] uppercase tracking-wider">
-              <span>Name / Character</span><span>Role</span><span>Day Rate</span><span>Scenes</span><span>Travel</span><span></span>
-            </div>
-            {cast.map(member => (
-              <div key={member.id} className="grid grid-cols-[1fr_100px_80px_100px_80px_60px] gap-3 items-center bg-[#0d0d0d] border border-[#1a1a1a] rounded-xl px-4 py-3 hover:border-[#222] group">
-                <div>
-                  <p className="text-white text-sm font-medium">{member.name}</p>
-                  {member.characterName && <p className="text-[#555] text-xs">{member.characterName}</p>}
-                </div>
-                <div>
-                  <span className="text-xs px-2 py-0.5 rounded-full font-medium capitalize"
-                    style={{ background: `${ROLE_COLORS[member.roleType]}22`, color: ROLE_COLORS[member.roleType] }}>
-                    {member.roleType.replace("_", " ")}
+      {cast.length === 0 ? (
+        <div style={{
+          textAlign: "center", padding: "64px 24px",
+          background: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)",
+          borderRadius: 16,
+        }}>
+          <p style={{ fontSize: "var(--text-md)", color: "var(--text-secondary)", marginBottom: 8 }}>No characters yet</p>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--text-tertiary)" }}>Import a script to auto-populate characters from your screenplay</p>
+        </div>
+      ) : (
+        <>
+          {/* Info banner */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 12,
+            padding: "12px 16px", marginBottom: 20,
+            background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.12)",
+            borderRadius: 10, fontSize: "var(--text-sm)", color: "var(--text-secondary)",
+          }}>
+            <span style={{ fontSize: 16 }}>💡</span>
+            Characters were auto-extracted from your script. Fill in the <strong style={{ color: "var(--text-primary)" }}>actor name</strong> and <strong style={{ color: "var(--text-primary)" }}>day rate</strong> for each.
+          </div>
+
+          {/* Role groups */}
+          {(["lead", "supporting", "day_player", "extra"] as const).map((role) => {
+            const members = grouped[role];
+            if (members.length === 0) return null;
+            return (
+              <div key={role} style={{ marginBottom: 28 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <span style={{
+                    fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em",
+                    padding: "3px 8px", borderRadius: 6,
+                    background: `${ROLE_COLORS[role]}15`, color: ROLE_COLORS[role],
+                  }}>
+                    {ROLE_LABELS[role]}
+                  </span>
+                  <span style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)" }}>
+                    {members.length} character{members.length !== 1 ? "s" : ""}
                   </span>
                 </div>
-                <span className="text-[#ccc] text-sm font-mono">{formatCurrency(member.dayRate, currency)}</span>
-                <div className="flex flex-wrap gap-1">
-                  {member.sceneLinks.slice(0, 3).map(l => (
-                    <span key={l.scene.id} className="text-[10px] bg-[#1a1a1a] text-[#888] px-1.5 py-0.5 rounded">
-                      {l.scene.sceneNumber}
-                    </span>
-                  ))}
-                  {member.sceneLinks.length > 3 && (
-                    <span className="text-[10px] text-[#555]">+{member.sceneLinks.length - 3}</span>
-                  )}
-                </div>
-                <span className="text-[#555] text-xs">{member.travelRequired ? "Yes" : "—"}</span>
-                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => startEdit(member)} className="text-[#555] hover:text-[#888]">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                    </svg>
-                  </button>
-                  <button onClick={() => { if (confirm("Remove cast member?")) deleteMutation.mutate(member.id); }} className="text-[#555] hover:text-[#ef4444]">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
-      {showAdd && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#111] border border-[#222] rounded-xl p-6 w-full max-w-md">
-            <h3 className="text-white font-semibold mb-4">{editId ? "Edit Cast Member" : "Add Cast Member"}</h3>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-[#888] block mb-1">Actor Name *</label>
-                  <input className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#f59e0b]"
-                    value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="text-xs text-[#888] block mb-1">Character Name</label>
-                  <input className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#f59e0b]"
-                    value={form.characterName} onChange={e => setForm(f => ({ ...f, characterName: e.target.value }))} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {members.map((member) => {
+                    const isEditing = editingId === member.id;
+                    const fields = editFields[member.id];
+                    const shootDays = getShootDays(member);
+                    const estimatedCost = member.dayRate * Math.max(shootDays, member.sceneLinks.length > 0 ? 1 : 0);
+
+                    return (
+                      <div
+                        key={member.id}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 180px 100px 80px 70px 60px",
+                          alignItems: "center",
+                          gap: 12,
+                          padding: "12px 16px",
+                          background: "var(--bg-surface-2)",
+                          border: `1px solid ${isEditing ? "var(--blue-border)" : "var(--border-subtle)"}`,
+                          borderRadius: 10,
+                          transition: "border-color 0.15s",
+                        }}
+                      >
+                        {/* Character + Actor */}
+                        <div>
+                          <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-primary)" }}>
+                            {member.characterName || "Unknown"}
+                          </div>
+                          {isEditing ? (
+                            <input
+                              autoFocus
+                              placeholder="Enter actor name..."
+                              value={fields?.name || ""}
+                              onChange={(e) =>
+                                setEditFields((prev) => ({
+                                  ...prev,
+                                  [member.id]: { ...prev[member.id], name: e.target.value },
+                                }))
+                              }
+                              onKeyDown={(e) => e.key === "Enter" && saveEdit(member.id)}
+                              style={{
+                                marginTop: 4, width: "100%", maxWidth: 200,
+                                background: "var(--bg-surface-1)", border: "1px solid var(--border-strong)",
+                                borderRadius: 6, padding: "4px 8px",
+                                fontSize: "var(--text-xs)", color: "var(--text-primary)",
+                                outline: "none",
+                              }}
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                fontSize: "var(--text-xs)",
+                                color: member.name ? "var(--text-secondary)" : "var(--text-tertiary)",
+                                marginTop: 2,
+                                cursor: "pointer",
+                              }}
+                              onClick={() => startEdit(member)}
+                            >
+                              {member.name || "Click to assign actor →"}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Scenes */}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                          {member.sceneLinks.slice(0, 5).map((l) => (
+                            <span
+                              key={l.scene.id}
+                              style={{
+                                fontSize: 10, padding: "2px 6px",
+                                background: "var(--bg-surface-3)", color: "var(--text-secondary)",
+                                borderRadius: 4,
+                              }}
+                            >
+                              Sc {l.scene.sceneNumber}
+                            </span>
+                          ))}
+                          {member.sceneLinks.length > 5 && (
+                            <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>
+                              +{member.sceneLinks.length - 5}
+                            </span>
+                          )}
+                          {member.sceneLinks.length === 0 && (
+                            <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>—</span>
+                          )}
+                        </div>
+
+                        {/* Day Rate */}
+                        {isEditing ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                            <span style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)" }}>{symbol}</span>
+                            <input
+                              type="number"
+                              placeholder="0"
+                              value={fields?.dayRate || ""}
+                              onChange={(e) =>
+                                setEditFields((prev) => ({
+                                  ...prev,
+                                  [member.id]: { ...prev[member.id], dayRate: e.target.value },
+                                }))
+                              }
+                              onKeyDown={(e) => e.key === "Enter" && saveEdit(member.id)}
+                              style={{
+                                width: 70,
+                                background: "var(--bg-surface-1)", border: "1px solid var(--border-strong)",
+                                borderRadius: 6, padding: "4px 6px",
+                                fontSize: "var(--text-xs)", color: "var(--text-primary)",
+                                outline: "none", fontFamily: "var(--font-mono)",
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: "var(--text-sm)", fontFamily: "var(--font-mono)",
+                              color: member.dayRate > 0 ? "var(--text-primary)" : "var(--text-tertiary)",
+                              cursor: "pointer",
+                            }}
+                            onClick={() => startEdit(member)}
+                          >
+                            {member.dayRate > 0 ? formatCurrency(member.dayRate, currency) : `${symbol}—`}
+                          </span>
+                        )}
+
+                        {/* Scenes count */}
+                        <span style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)", textAlign: "center" }}>
+                          {member.sceneLinks.length} sc
+                        </span>
+
+                        {/* Shoot days */}
+                        <span style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)", textAlign: "center" }}>
+                          {shootDays > 0 ? `${shootDays}d` : "—"}
+                        </span>
+
+                        {/* Actions */}
+                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                          {isEditing ? (
+                            <>
+                              <button
+                                onClick={() => saveEdit(member.id)}
+                                style={{
+                                  padding: "4px 10px", fontSize: 11, fontWeight: 600,
+                                  background: "var(--blue)", color: "white",
+                                  border: "none", borderRadius: 6, cursor: "pointer",
+                                }}
+                              >
+                                Save
+                              </button>
+                              <button
+                                onClick={() => setEditingId(null)}
+                                style={{
+                                  padding: "4px 8px", fontSize: 11,
+                                  background: "transparent", color: "var(--text-tertiary)",
+                                  border: "1px solid var(--border-default)", borderRadius: 6, cursor: "pointer",
+                                }}
+                              >
+                                ✕
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => startEdit(member)}
+                                style={{
+                                  padding: "4px 8px", fontSize: 11,
+                                  background: "transparent", color: "var(--text-tertiary)",
+                                  border: "1px solid var(--border-subtle)", borderRadius: 6, cursor: "pointer",
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Remove ${member.characterName || "this character"}?`))
+                                    deleteMutation.mutate(member.id);
+                                }}
+                                style={{
+                                  padding: "4px 6px", fontSize: 11,
+                                  background: "transparent", color: "var(--text-tertiary)",
+                                  border: "none", cursor: "pointer",
+                                }}
+                              >
+                                ✕
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-[#888] block mb-1">Role Type</label>
-                  <select className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#f59e0b]"
-                    value={form.roleType} onChange={e => setForm(f => ({ ...f, roleType: e.target.value }))}>
-                    {ROLE_TYPES.map(r => <option key={r} value={r}>{r.replace("_", " ")}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-[#888] block mb-1">Day Rate ({currency === "INR" ? "₹" : "$"})</label>
-                  <input type="number" className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#f59e0b]"
-                    placeholder="50000" value={form.dayRate} onChange={e => setForm(f => ({ ...f, dayRate: e.target.value }))} />
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={form.travelRequired} onChange={e => setForm(f => ({ ...f, travelRequired: e.target.checked }))} />
-                  <span className="text-xs text-[#888]">Travel Required</span>
-                </label>
-              </div>
-              <div>
-                <label className="text-xs text-[#888] block mb-1">Notes</label>
-                <textarea className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#f59e0b] resize-none"
-                  rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+            );
+          })}
+
+          {/* Summary */}
+          <div style={{
+            display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 8,
+            padding: "16px", background: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)",
+            borderRadius: 12,
+          }}>
+            <div>
+              <div style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Total Daily Rate</div>
+              <div style={{ fontSize: "var(--text-lg)", fontWeight: 600, fontFamily: "var(--font-mono)", color: "var(--text-primary)", marginTop: 4 }}>
+                {formatCurrency(totalDaily, currency)}
               </div>
             </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={() => { setShowAdd(false); setEditId(null); }} className="flex-1 py-2 bg-[#1a1a1a] text-[#888] text-xs rounded-lg">Cancel</button>
-              <button
-                onClick={() => form.name && saveMutation.mutate(form)}
-                disabled={!form.name || saveMutation.isPending}
-                className="flex-1 py-2 bg-[#f59e0b] text-black text-xs font-semibold rounded-lg disabled:opacity-50"
-              >
-                {saveMutation.isPending ? "Saving..." : editId ? "Update" : "Add Cast"}
-              </button>
+            <div>
+              <div style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Actors Assigned</div>
+              <div style={{ fontSize: "var(--text-lg)", fontWeight: 600, fontFamily: "var(--font-mono)", color: "var(--text-primary)", marginTop: 4 }}>
+                {cast.filter((c) => c.name).length}/{cast.length}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Rates Set</div>
+              <div style={{ fontSize: "var(--text-lg)", fontWeight: 600, fontFamily: "var(--font-mono)", color: "var(--text-primary)", marginTop: 4 }}>
+                {cast.filter((c) => c.dayRate > 0).length}/{cast.length}
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

@@ -12,6 +12,14 @@ export function formatCurrency(amount: number, currency = "INR"): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
 }
 
+export function formatCompact(amount: number, currency = "INR"): string {
+  const symbol = currency === "INR" ? "₹" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$";
+  if (amount >= 10000000) return `${symbol}${(amount / 10000000).toFixed(1).replace(/\.0$/, "")} Cr`;
+  if (amount >= 100000) return `${symbol}${(amount / 100000).toFixed(1).replace(/\.0$/, "")} L`;
+  if (amount >= 1000) return `${symbol}${(amount / 1000).toFixed(0)}K`;
+  return `${symbol}${amount}`;
+}
+
 export function formatDelta(delta: number, currency = "INR"): string {
   const abs = Math.abs(delta);
   const sign = delta >= 0 ? "+" : "-";

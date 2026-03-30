@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logBudgetChange } from "@/lib/budget-engine";
+import { getSessionUser } from "@/lib/auth";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string; sceneId: string }> }) {
-  const { sceneId } = await params;
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id, sceneId } = await params;
+
+  const project = await prisma.project.findUnique({ where: { id }, select: { id: true, userId: true } });
+  if (!project || (project.userId && project.userId !== user.id)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const scene = await prisma.scene.findUnique({
     where: { id: sceneId },
     include: {
@@ -16,7 +26,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string; sceneId: string }> }) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id, sceneId } = await params;
+
+  const project = await prisma.project.findUnique({ where: { id }, select: { id: true, userId: true } });
+  if (!project || (project.userId && project.userId !== user.id)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const body = await req.json();
 
   const prev = await prisma.scene.findUnique({ where: { id: sceneId } });
@@ -34,6 +53,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       shootDayId: body.shootDayId !== undefined ? body.shootDayId : undefined,
       status: body.status,
       order: body.order !== undefined ? body.order : undefined,
+      elementsJson: body.elementsJson !== undefined ? body.elementsJson : undefined,
     },
     include: {
       castLinks: { include: { castMember: true } },
@@ -53,7 +73,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string; sceneId: string }> }) {
-  const { sceneId } = await params;
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id, sceneId } = await params;
+
+  const project = await prisma.project.findUnique({ where: { id }, select: { id: true, userId: true } });
+  if (!project || (project.userId && project.userId !== user.id)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   await prisma.scene.delete({ where: { id: sceneId } });
   return NextResponse.json({ success: true });
 }

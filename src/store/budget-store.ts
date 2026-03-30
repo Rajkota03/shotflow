@@ -18,7 +18,7 @@ interface BudgetStore {
   refreshBudget: (projectId: string) => Promise<void>;
 }
 
-export const useBudgetStore = create<BudgetStore>((set, get) => ({
+export const useBudgetStore = create<BudgetStore>((set) => ({
   budget: null,
   isLoading: false,
   lastUpdated: null,

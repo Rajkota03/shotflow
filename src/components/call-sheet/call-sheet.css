@@ -1,0 +1,649 @@
+/* ============================================================
+   CALL SHEET — Professional Film Production Document
+   Designed for on-screen viewing (dark) and print (white)
+   ============================================================ */
+
+/* ── 1. Main Container ────────────────────────────────────── */
+.call-sheet {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-app);
+  font-family: var(--font-inter), -apple-system, sans-serif;
+  color: var(--text-primary);
+}
+
+/* ── 2. Toolbar ───────────────────────────────────────────── */
+.call-sheet-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--bg-surface-2);
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+
+/* ── 3. Day Selector ──────────────────────────────────────── */
+.call-sheet-toolbar__day-select {
+  appearance: none;
+  background: var(--bg-surface-3);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: 6px 32px 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%237C8091' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  transition: border-color 0.15s;
+}
+
+.call-sheet-toolbar__day-select:hover {
+  border-color: var(--border-strong);
+}
+
+.call-sheet-toolbar__day-select:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px var(--blue-subtle);
+}
+
+/* ── 4. Action Buttons ────────────────────────────────────── */
+.call-sheet-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.call-sheet-toolbar__actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-surface-3);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.call-sheet-toolbar__actions button:hover {
+  background: var(--bg-surface-4);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.call-sheet-toolbar__actions button:active {
+  transform: scale(0.98);
+}
+
+/* ── 5. Document Area ─────────────────────────────────────── */
+.call-sheet-document {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.call-sheet-document__inner {
+  width: 100%;
+  max-width: 800px;
+  background: var(--bg-surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    0 0 0 1px var(--border-subtle);
+  padding: 28px 32px;
+}
+
+/* ── 6. Header Block ──────────────────────────────────────── */
+.call-sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--border-strong);
+  margin-bottom: 20px;
+}
+
+/* ── 7. Title ─────────────────────────────────────────────── */
+.call-sheet-header__title {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text-primary);
+  margin: 0 0 4px 0;
+}
+
+/* ── 8. Meta Row ──────────────────────────────────────────── */
+.call-sheet-header__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.call-sheet-header__meta span {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.call-sheet-header__meta span strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ── 9. Day Info (Right Side) ─────────────────────────────── */
+.call-sheet-header__day-info {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.call-sheet-header__day-info__day-number {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.call-sheet-header__day-info__day-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+
+.call-sheet-header__day-info__date {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: 4px;
+}
+
+.call-sheet-header__day-info__times {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 4px;
+}
+
+.call-sheet-header__day-info__times span {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.call-sheet-header__day-info__times span strong {
+  font-family: var(--font-jetbrains-mono), monospace;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.call-sheet-header__day-info__weather {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 6px;
+}
+
+/* ── 10. General Crew Call Banner ─────────────────────────── */
+.call-sheet-general-call {
+  background: var(--blue-subtle);
+  border-left: 3px solid var(--blue);
+  border-radius: 0 4px 4px 0;
+  padding: 10px 14px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.call-sheet-general-call__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.call-sheet-general-call__time {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-jetbrains-mono), monospace;
+  color: var(--text-primary);
+}
+
+/* ── 11. Section Wrapper ──────────────────────────────────── */
+.call-sheet-section {
+  margin-bottom: 20px;
+}
+
+/* ── 12. Section Title ────────────────────────────────────── */
+.call-sheet-section__title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-default);
+  margin-bottom: 0;
+}
+
+/* ── 13–16. Table Styles ──────────────────────────────────── */
+.call-sheet-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.call-sheet-table th {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  background: var(--bg-surface-3);
+  text-align: left;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.call-sheet-table td {
+  font-size: 12px;
+  color: var(--text-primary);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: top;
+}
+
+.call-sheet-table tr:hover td {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.call-sheet-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── 17–20. Scene Row ─────────────────────────────────────── */
+.call-sheet-scene-row td {
+  font-size: 12px;
+}
+
+.call-sheet-scene-row__number {
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--text-primary);
+  min-width: 36px;
+}
+
+.call-sheet-scene-row__ie,
+.call-sheet-scene-row__dn {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.call-sheet-scene-row__ie {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--blue);
+}
+
+.call-sheet-scene-row__ie--ext {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--green);
+}
+
+.call-sheet-scene-row__dn {
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--amber);
+}
+
+.call-sheet-scene-row__dn--night {
+  background: rgba(167, 139, 250, 0.12);
+  color: var(--purple);
+}
+
+/* ── 21–23. Cast Table ────────────────────────────────────── */
+.call-sheet-cast-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.call-sheet-cast-table th {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  background: var(--bg-surface-3);
+  text-align: left;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.call-sheet-cast-table td {
+  font-size: 12px;
+  color: var(--text-primary);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+.call-sheet-cast-table tr:hover td {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.call-sheet-cast-table__number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-jetbrains-mono), monospace;
+  background: rgba(250, 204, 21, 0.12);
+  color: var(--cat-cast);
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.call-sheet-cast-table__status {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.call-sheet-cast-table__status--w {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--green);
+}
+
+.call-sheet-cast-table__status--sw {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--blue);
+}
+
+.call-sheet-cast-table__status--wf {
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--amber);
+}
+
+.call-sheet-cast-table__status--h {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-tertiary);
+}
+
+/* ── 24–27. Crew Grid ─────────────────────────────────────── */
+.call-sheet-crew-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.call-sheet-dept {
+  min-width: 0;
+}
+
+.call-sheet-dept__title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.call-sheet-dept__member {
+  font-size: 11px;
+  color: var(--text-primary);
+  line-height: 1.7;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.call-sheet-dept__member-role {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.call-sheet-dept__member-time {
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* ── 28. Location Box ─────────────────────────────────────── */
+.call-sheet-location-box {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  padding: 12px 14px;
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 24px;
+}
+
+.call-sheet-location-box__item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.call-sheet-location-box__label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+
+.call-sheet-location-box__value {
+  font-size: 12px;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.call-sheet-location-box__item--full {
+  grid-column: 1 / -1;
+}
+
+/* ── 29. Notes ────────────────────────────────────────────── */
+.call-sheet-notes {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+  line-height: 1.6;
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: var(--bg-surface-2);
+  border-radius: 4px;
+  border-left: 2px solid var(--border-default);
+}
+
+/* ── 30. Footer ───────────────────────────────────────────── */
+.call-sheet-footer {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-default);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.call-sheet-footer__confidential {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--red);
+}
+
+.call-sheet-footer__page-info {
+  font-size: 9px;
+  color: var(--text-tertiary);
+}
+
+/* ============================================================
+   PRINT STYLES
+   ============================================================ */
+@media print {
+  /* Hide toolbar, only print the document */
+  .call-sheet-toolbar {
+    display: none !important;
+  }
+
+  .call-sheet {
+    background: white;
+    height: auto;
+  }
+
+  .call-sheet-document {
+    padding: 0;
+    overflow: visible;
+  }
+
+  .call-sheet-document__inner {
+    max-width: none;
+    background: white;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    border-radius: 0;
+  }
+
+  /* Swap to black text */
+  .call-sheet-header__title,
+  .call-sheet-header__day-info__day-number,
+  .call-sheet-header__day-info__date,
+  .call-sheet-header__meta span strong,
+  .call-sheet-header__day-info__times span strong,
+  .call-sheet-table td,
+  .call-sheet-cast-table td,
+  .call-sheet-dept__member,
+  .call-sheet-location-box__value,
+  .call-sheet-general-call__time {
+    color: #000 !important;
+  }
+
+  .call-sheet-header__meta span,
+  .call-sheet-header__day-info__times span,
+  .call-sheet-header__day-info__weather,
+  .call-sheet-section__title,
+  .call-sheet-table th,
+  .call-sheet-cast-table th,
+  .call-sheet-dept__title,
+  .call-sheet-location-box__label,
+  .call-sheet-general-call__label,
+  .call-sheet-dept__member-role,
+  .call-sheet-dept__member-time,
+  .call-sheet-footer__page-info,
+  .call-sheet-notes {
+    color: #444 !important;
+  }
+
+  .call-sheet-text-tertiary,
+  .call-sheet-footer__confidential {
+    color: #666 !important;
+  }
+
+  /* Flatten backgrounds */
+  .call-sheet-table th,
+  .call-sheet-cast-table th {
+    background: #f4f4f4 !important;
+  }
+
+  .call-sheet-general-call {
+    background: #f0f4ff !important;
+    border-left-color: #3B82F6 !important;
+  }
+
+  .call-sheet-location-box,
+  .call-sheet-notes {
+    background: #fafafa !important;
+    border-color: #ddd !important;
+  }
+
+  /* Borders for print */
+  .call-sheet-header {
+    border-bottom-color: #000 !important;
+  }
+
+  .call-sheet-section__title {
+    border-bottom-color: #ccc !important;
+  }
+
+  .call-sheet-table td,
+  .call-sheet-cast-table td {
+    border-bottom-color: #e0e0e0 !important;
+  }
+
+  .call-sheet-footer {
+    border-top-color: #ccc !important;
+  }
+
+  /* Badges in print */
+  .call-sheet-scene-row__ie,
+  .call-sheet-scene-row__dn,
+  .call-sheet-cast-table__status,
+  .call-sheet-cast-table__number {
+    border: 1px solid #ccc !important;
+    background: #f8f8f8 !important;
+    color: #333 !important;
+  }
+
+  /* Page control */
+  @page {
+    margin: 0.6in 0.5in;
+    size: letter;
+  }
+
+  .call-sheet-section {
+    break-inside: avoid;
+  }
+
+  .call-sheet-header {
+    break-after: avoid;
+  }
+
+  .call-sheet-table tr,
+  .call-sheet-cast-table tr {
+    break-inside: avoid;
+  }
+
+  .call-sheet-footer {
+    break-before: avoid;
+  }
+}

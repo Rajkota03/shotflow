@@ -4,22 +4,61 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-model Project {
-  id            String   @id @default(cuid())
-  title         String
-  genre         String?
-  format        String   @default("film") // film/series/short
-  budgetCap     Float    @default(0)
-  currency      String   @default("INR")
-  startDate     DateTime?
-  endDate       DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+// ── Auth ──────────────────────────────────────────
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
+  sessions     Session[]
+  projects     Project[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+}
+
+// ── Production ───────────────────────────────────
+model Project {
+  id                  String   @id @default(cuid())
+  userId              String?
+  title               String
+  genre               String?
+  format              String   @default("film")
+  budgetCap           Float    @default(0)
+  currency            String   @default("INR")
+  productionCompany   String?
+  timezone            String   @default("Asia/Kolkata")
+  defaultCallTime     String   @default("07:00")
+  defaultWrapTime     String   @default("19:00")
+  overtimeThreshold   Int      @default(12)
+  turnaroundHours     Int      @default(10)
+  defaultEncoding     String   @default("utf-8")
+  parserPreference    String   @default("auto")
+  defaultExportFormat String   @default("one-liner")
+  defaultPaperSize    String   @default("A4")
+  startDate           DateTime?
+  endDate             DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user          User?    @relation(fields: [userId], references: [id])
   shootDays     ShootDay[]
   scenes        Scene[]
   castMembers   CastMember[]
@@ -28,11 +67,15 @@ model Project {
   crewMembers   CrewMember[]
   shots         Shot[]
   budgetChanges BudgetChangeLog[]
+  schedules     Schedule[]
+
+  @@index([userId])
 }
 
 model ShootDay {
   id                  String   @id @default(cuid())
   projectId           String
+  scheduleId          String?
   dayNumber           Int
   date                DateTime?
   callTime            String?
@@ -46,12 +89,14 @@ model ShootDay {
   updatedAt           DateTime @updatedAt
 
   project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  schedule            Schedule? @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   location            Location? @relation(fields: [locationId], references: [id])
   locationId          String?
   scenes              Scene[]
   equipmentLinks      EquipmentDayLink[]
 
   @@index([projectId])
+  @@index([scheduleId])
 }
 
 model Scene {
@@ -64,9 +109,11 @@ model Scene {
   dayNight      String   @default("DAY") // DAY/NIGHT
   pageCount     Float    @default(1)
   synopsis      String?
+  content       String?  // Full scene text for AI processing
   scriptPageRef String?
   status        String   @default("unscheduled") // scheduled/unscheduled/completed
   order         Int      @default(0)
+  elementsJson  String?  // JSON array of elements
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -224,3 +271,31 @@ model BudgetChangeLog {
   @@index([projectId])
   @@index([createdAt])
 }
+
+model Schedule {
+  id           String   @id @default(cuid())
+  projectId    String
+  name         String   @default("Main Schedule")
+  startDate    DateTime
+  endDate      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  shootDays    ShootDay[]
+  blockedDates BlockedDate[]
+
+  @@index([projectId])
+}
+
+model BlockedDate {
+  id         String   @id @default(cuid())
+  scheduleId String
+  date       DateTime
+  reason     String   @default("sunday") // sunday / holiday / custom
+
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, date])
+}
+

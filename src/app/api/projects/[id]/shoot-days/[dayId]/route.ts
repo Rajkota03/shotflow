@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logBudgetChange } from "@/lib/budget-engine";
+import { getSessionUser } from "@/lib/auth";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string; dayId: string }> }) {
-  const { dayId } = await params;
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id, dayId } = await params;
+
+  const project = await prisma.project.findUnique({ where: { id }, select: { id: true, userId: true } });
+  if (!project || (project.userId && project.userId !== user.id)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const day = await prisma.shootDay.findUnique({
     where: { id: dayId },
     include: {
@@ -20,7 +29,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string; dayId: string }> }) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id, dayId } = await params;
+
+  const project = await prisma.project.findUnique({ where: { id }, select: { id: true, userId: true } });
+  if (!project || (project.userId && project.userId !== user.id)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const body = await req.json();
 
   const prev = await prisma.shootDay.findUnique({ where: { id: dayId } });
@@ -72,7 +90,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string; dayId: string }> }) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id, dayId } = await params;
+
+  const project = await prisma.project.findUnique({ where: { id }, select: { id: true, userId: true } });
+  if (!project || (project.userId && project.userId !== user.id)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const day = await prisma.shootDay.findUnique({ where: { id: dayId } });
 
   // Unschedule all scenes on this day
@@ -85,6 +112,20 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   if (day) {
     await logBudgetChange(id, "day_removed", `Shoot Day ${day.dayNumber} removed`, 0, "shoot_day", dayId);
+
+    // Renumber remaining days sequentially
+    const remaining = await prisma.shootDay.findMany({
+      where: { projectId: id },
+      orderBy: { order: "asc" },
+    });
+    await Promise.all(
+      remaining.map((d, i) =>
+        prisma.shootDay.update({
+          where: { id: d.id },
+          data: { dayNumber: i + 1, order: i },
+        })
+      )
+    );
   }
 
   return NextResponse.json({ success: true });

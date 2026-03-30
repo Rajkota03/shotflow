@@ -162,11 +162,11 @@ export async function calculateProjectBudget(projectId: string): Promise<Project
     );
     const crewCost = crewDailyTotal;
 
-    // VFX misc
-    const vfxCount = day.scenes.reduce((sum, scene) => {
-      return sum; // Will be calculated separately
-    }, 0);
-    const miscCost = 0;
+    // VFX shots misc cost per day
+    const dayVfxShots = await prisma.shot.count({
+      where: { scene: { shootDayId: day.id }, isVfx: true },
+    });
+    const miscCost = dayVfxShots * 50000;
 
     const total = castCost + locationCost + equipmentCost + crewCost + miscCost;
 
