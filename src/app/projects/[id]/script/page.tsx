@@ -152,9 +152,24 @@ export default function ScriptPage({
       const ext = file.name.split(".").pop()?.toLowerCase();
 
       if (ext === "pdf") {
-        // Extract text from PDF using pdfjs-dist
-        const { extractTextFromPdf } = await import("@/lib/script-parser");
-        text = await extractTextFromPdf(file);
+        // Extract text server-side (pdfjs legacy build works in Node without browser APIs)
+        try {
+          const form = new FormData();
+          form.append("file", file);
+          const res = await fetch("/api/extract-pdf", { method: "POST", body: form });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Unknown error" }));
+            throw new Error(err.error || `Server returned ${res.status}`);
+          }
+          const { text: pdfText } = await res.json();
+          text = pdfText;
+        } catch (pdfError) {
+          console.error("[script/handleFile] PDF extraction failed:", pdfError);
+          alert(
+            `Failed to read PDF: ${pdfError instanceof Error ? pdfError.message : "Unknown error"}. Try converting to .fdx or .fountain first.`
+          );
+          return;
+        }
       } else if (ext === "docx") {
         // Word document — convert to HTML then strip tags preserving line breaks
         const mammoth = await import("mammoth");
@@ -968,11 +983,7 @@ function generateWarnings(
         line: i * 20,
         message: `Scene ${s.sceneNumber}: No INT/EXT detected`,
       });
-    if (s.pageCount < 0.25)
-      warnings.push({
-        line: i * 20,
-        message: `Scene ${s.sceneNumber}: Very short scene (${s.pageCount}pp)`,
-      });
+    // Short scenes are intentional — no warning for page count.
   });
   return warnings;
 }

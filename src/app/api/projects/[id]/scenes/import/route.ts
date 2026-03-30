@@ -130,9 +130,40 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
+    // ── Auto-populate locations from scene headings ──
+    const existingLocations = await prisma.location.count({ where: { projectId: id } });
+    let locationsCreated = 0;
+
+    if (existingLocations === 0) {
+      const locationMap = new Map<string, number>();
+      for (const raw of scenes as FrontendScene[]) {
+        const name = raw.heading?.trim();
+        if (!name || name === "UNNAMED SCENE") continue;
+        locationMap.set(name, (locationMap.get(name) || 0) + 1);
+      }
+
+      for (const [name] of locationMap) {
+        const nameLower = name.toLowerCase();
+        const isOutdoor = /\b(road|street|highway|garden|park|beach|river|mountain|market|outside|rooftop|terrace|field|ground|jungle|forest|parking|gate|bus|train|station)\b/.test(nameLower);
+        const isStudio = /\b(studio|set|stage|green\s?screen)\b/.test(nameLower);
+
+        await prisma.location.create({
+          data: {
+            projectId: id,
+            name,
+            locationType: isStudio ? "studio" : isOutdoor ? "outdoor" : "practical",
+            dailyRentalCost: 0,
+            permitCost: 0,
+          },
+        });
+        locationsCreated++;
+      }
+    }
+
     return NextResponse.json({
       imported: insertedScenes.length,
       castCreated: castCreated.length,
+      locationsCreated,
       cast: castCreated,
     });
   } catch (err) {

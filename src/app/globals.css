@@ -2854,3 +2854,25 @@ body {
   border-radius: 50%;
   background: var(--amber);
 }
+
+/* ── Date Input — dark-themed native date picker ──────────────
+   ================================================================ */
+.sf-date-input {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-family: var(--font-inter);
+  font-size: 14px;
+  width: 100%;
+  outline: none;
+  transition: border-color 150ms;
+}
+.sf-date-input:focus {
+  border-color: var(--blue);
+}
+.sf-date-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
+}

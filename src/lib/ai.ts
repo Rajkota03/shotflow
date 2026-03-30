@@ -1,7 +1,10 @@
 /**
- * Ollama AI client for ShotFlow.
- * Reads OLLAMA_URL and OLLAMA_MODEL from env vars.
+ * AI client for ShotFlow.
+ * Uses Anthropic Claude API when ANTHROPIC_API_KEY is set, falls back to Ollama.
  */
+
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3";
@@ -13,11 +16,54 @@ interface OllamaResponse {
 }
 
 /**
- * Send a prompt to Ollama and get a complete response (non-streaming).
+ * Which AI provider is active: "anthropic" if API key is set, "ollama" otherwise.
  */
-export async function ollamaGenerate(prompt: string, system?: string): Promise<string> {
+export function getActiveProvider(): "anthropic" | "ollama" {
+  return ANTHROPIC_API_KEY ? "anthropic" : "ollama";
+}
+
+/**
+ * Generate text using the Anthropic Claude API.
+ */
+async function anthropicGenerate(prompt: string, system?: string): Promise<string> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120_000); // 2 min timeout
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY!,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 2048,
+        messages: [{ role: "user", content: prompt }],
+        ...(system ? { system } : {}),
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Anthropic API error ${res.status}: ${text}`);
+    }
+
+    const data = await res.json();
+    return data.content[0].text;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Generate text using local Ollama.
+ */
+async function ollamaGenerateLocal(prompt: string, system?: string): Promise<string> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
 
   try {
     const res = await fetch(`${OLLAMA_URL}/api/generate`, {
@@ -49,22 +95,60 @@ export async function ollamaGenerate(prompt: string, system?: string): Promise<s
 }
 
 /**
- * Check if Ollama is reachable and the model is available.
+ * Send a prompt to the active AI provider (Anthropic primary, Ollama fallback).
  */
-export async function ollamaHealth(): Promise<{ ok: boolean; model: string; error?: string }> {
+export async function ollamaGenerate(prompt: string, system?: string): Promise<string> {
+  if (ANTHROPIC_API_KEY) {
+    return anthropicGenerate(prompt, system);
+  }
+  return ollamaGenerateLocal(prompt, system);
+}
+
+/**
+ * Check AI provider health.
+ */
+export async function ollamaHealth(): Promise<{ ok: boolean; model: string; provider: string; error?: string }> {
+  if (ANTHROPIC_API_KEY) {
+    // Anthropic: just verify the key works with a minimal request
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: ANTHROPIC_MODEL,
+          max_tokens: 1,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        return { ok: false, model: ANTHROPIC_MODEL, provider: "anthropic", error: `HTTP ${res.status}: ${text}` };
+      }
+      return { ok: true, model: ANTHROPIC_MODEL, provider: "anthropic" };
+    } catch (e) {
+      return { ok: false, model: ANTHROPIC_MODEL, provider: "anthropic", error: `Cannot reach Anthropic API: ${e}` };
+    }
+  }
+
+  // Fallback: Ollama health check
   try {
     const res = await fetch(`${OLLAMA_URL}/api/tags`);
-    if (!res.ok) return { ok: false, model: OLLAMA_MODEL, error: `HTTP ${res.status}` };
+    if (!res.ok) return { ok: false, model: OLLAMA_MODEL, provider: "ollama", error: `HTTP ${res.status}` };
     const data = await res.json();
     const models = (data.models || []).map((m: { name: string }) => m.name);
     const found = models.some((n: string) => n.startsWith(OLLAMA_MODEL));
     return {
       ok: found,
       model: OLLAMA_MODEL,
+      provider: "ollama",
       error: found ? undefined : `Model "${OLLAMA_MODEL}" not found. Available: ${models.join(", ")}`,
     };
   } catch {
-    return { ok: false, model: OLLAMA_MODEL, error: `Cannot reach Ollama at ${OLLAMA_URL}` };
+    return { ok: false, model: OLLAMA_MODEL, provider: "ollama", error: `Cannot reach Ollama at ${OLLAMA_URL}` };
   }
 }
 

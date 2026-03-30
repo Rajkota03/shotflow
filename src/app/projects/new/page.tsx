@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Film, Plus, Loader2 } from "lucide-react";
+import { amountToWords } from "@/lib/utils";
 
 export default function NewProjectPage() {
   const router = useRouter();
@@ -87,6 +88,11 @@ export default function NewProjectPage() {
                 value={form.budgetCap}
                 onChange={(e) => setForm(f => ({ ...f, budgetCap: e.target.value }))}
               />
+              {Number(form.budgetCap) > 0 && (
+                <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>
+                  {amountToWords(Number(form.budgetCap), form.currency)}
+                </span>
+              )}
             </div>
             <div className="new-project-field">
               <label className="new-project-label">Currency</label>

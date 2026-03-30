@@ -3,7 +3,7 @@ import "./budget.css";
 import { useState, useEffect, use, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/components/ui/toast";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, amountToWords } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -683,6 +683,11 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
                 <Pencil size={9} className="budget-topbar__cap-pencil" />
               </button>
             )}
+            {budgetCap > 0 && (
+              <span style={{ color: 'var(--text-tertiary)', fontSize: '11px', display: 'block' }}>
+                {amountToWords(budgetCap, currency)}
+              </span>
+            )}
           </div>
           {budgetCap > 0 && (
             <div className={cn("budget-topbar__stat", grandTotal > budgetCap ? "budget-topbar__stat--over" : "budget-topbar__stat--under")}>
@@ -974,6 +979,9 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
                   {grandTotal > budgetCap ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
                   <span>Budget Cap</span>
                   <span className="budget-topsheet__cap-val">{fmt(budgetCap)}</span>
+                  <span style={{ color: 'var(--text-tertiary)', fontSize: '11px', marginLeft: 4 }}>
+                    {amountToWords(budgetCap, currency)}
+                  </span>
                 </div>
                 <div className="budget-topsheet__cap-row">
                   <span>{grandTotal > budgetCap ? "Over by" : "Remaining"}</span>

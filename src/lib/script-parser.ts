@@ -24,7 +24,11 @@ export async function extractTextFromPdf(file: File): Promise<string> {
     // Polyfill Promise.try for Safari (pdfjs-dist v5 requires it)
     if (typeof (Promise as unknown as { try: unknown }).try !== "function") {
         (Promise as unknown as Record<string, unknown>).try = function <T>(fn: () => T): Promise<T> {
-            return new Promise<T>((resolve) => resolve(fn()));
+            try {
+                return Promise.resolve(fn());
+            } catch (error) {
+                return Promise.reject(error);
+            }
         };
     }
 

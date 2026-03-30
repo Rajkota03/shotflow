@@ -3,6 +3,7 @@
 import { useState, use, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/ui/toast";
+import { amountToWords } from "@/lib/utils";
 
 interface ProjectSettings {
   title: string;
@@ -274,6 +275,11 @@ export default function SettingsPage({
                 onChange={(e) => update({ budgetCap: Number(e.target.value) })}
                 placeholder="e.g. 10000000"
               />
+              {settings.budgetCap > 0 && (
+                <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>
+                  {amountToWords(settings.budgetCap, settings.currency)}
+                </span>
+              )}
               <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>
                 Set to 0 for no cap. This controls the budget health bar and comparison alerts.
               </p>

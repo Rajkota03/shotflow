@@ -311,12 +311,12 @@ export default function SchedulesPage({ params }: { params: Promise<{ id: string
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-xs text-[#888] block mb-1.5 font-medium">Start Date</label>
-                                    <input type="date" className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#f59e0b]"
+                                    <input type="date" className="sf-date-input"
                                         value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} />
                                 </div>
                                 <div>
                                     <label className="text-xs text-[#888] block mb-1.5 font-medium">End Date</label>
-                                    <input type="date" className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#f59e0b]"
+                                    <input type="date" className="sf-date-input"
                                         value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} />
                                 </div>
                             </div>

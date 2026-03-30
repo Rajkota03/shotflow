@@ -146,7 +146,7 @@ export default function ScheduleSetupPage({ params }: { params: Promise<{ id: st
             <div>
               <label className="sf-label">Start Date</label>
               <input
-                className="sf-input"
+                className="sf-date-input"
                 type="date"
                 value={config.startDate}
                 onChange={(e) => update("startDate", e.target.value)}
@@ -155,7 +155,7 @@ export default function ScheduleSetupPage({ params }: { params: Promise<{ id: st
             <div>
               <label className="sf-label">End Date (optional)</label>
               <input
-                className="sf-input"
+                className="sf-date-input"
                 type="date"
                 value={config.endDate}
                 onChange={(e) => update("endDate", e.target.value)}
@@ -236,7 +236,7 @@ export default function ScheduleSetupPage({ params }: { params: Promise<{ id: st
             <label className="sf-label">Blocked Dates / Holidays</label>
             <div className="flex gap-2 mb-2">
               <input
-                className="sf-input"
+                className="sf-date-input"
                 type="date"
                 value={newBlockedDate}
                 onChange={(e) => setNewBlockedDate(e.target.value)}

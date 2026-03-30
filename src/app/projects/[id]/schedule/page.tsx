@@ -779,7 +779,7 @@ function ScheduleSetupModal({
             <div className="setup-modal__field">
               <label>Start Date</label>
               <input
-                className="sf-input"
+                className="sf-date-input"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
@@ -788,7 +788,7 @@ function ScheduleSetupModal({
             <div className="setup-modal__field">
               <label>End Date</label>
               <input
-                className="sf-input"
+                className="sf-date-input"
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
