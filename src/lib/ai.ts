@@ -99,11 +99,14 @@ async function ollamaGenerateLocal(prompt: string, system?: string): Promise<str
  * Haiku is primary (fast, cheap). Ollama (self-hosted, free) is fallback.
  */
 export async function ollamaGenerate(prompt: string, system?: string): Promise<string> {
+  const provider = ANTHROPIC_API_KEY ? "anthropic" : "ollama";
+  console.log(`[AI] Using ${provider} (model: ${provider === "anthropic" ? ANTHROPIC_MODEL : OLLAMA_MODEL})`);
+
   if (ANTHROPIC_API_KEY) {
     try {
       return await anthropicGenerate(prompt, system);
     } catch (err) {
-      console.warn("Anthropic failed, falling back to Ollama:", err);
+      console.warn("[AI] Anthropic failed, falling back to Ollama:", err);
       return ollamaGenerateLocal(prompt, system);
     }
   }
