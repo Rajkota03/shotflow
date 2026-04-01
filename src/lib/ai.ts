@@ -6,8 +6,8 @@
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5-20251001";
 
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3";
+const OLLAMA_URL = process.env.OLLAMA_URL || "http://207.180.216.112:11434";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen2.5:14b";
 
 interface OllamaResponse {
   model: string;
@@ -16,10 +16,10 @@ interface OllamaResponse {
 }
 
 /**
- * Which AI provider is active: "anthropic" if API key is set, "ollama" otherwise.
+ * Which AI provider is active: Ollama (self-hosted) is primary, Anthropic is fallback.
  */
-export function getActiveProvider(): "anthropic" | "ollama" {
-  return ANTHROPIC_API_KEY ? "anthropic" : "ollama";
+export function getActiveProvider(): "ollama" | "anthropic" {
+  return "ollama";
 }
 
 /**
@@ -95,13 +95,19 @@ async function ollamaGenerateLocal(prompt: string, system?: string): Promise<str
 }
 
 /**
- * Send a prompt to the active AI provider (Anthropic primary, Ollama fallback).
+ * Send a prompt to the active AI provider.
+ * Ollama (self-hosted, fast, free) is primary. Claude is fallback if Ollama fails.
  */
 export async function ollamaGenerate(prompt: string, system?: string): Promise<string> {
-  if (ANTHROPIC_API_KEY) {
-    return anthropicGenerate(prompt, system);
+  try {
+    return await ollamaGenerateLocal(prompt, system);
+  } catch (ollamaErr) {
+    console.warn("Ollama failed, falling back to Anthropic:", ollamaErr);
+    if (ANTHROPIC_API_KEY) {
+      return anthropicGenerate(prompt, system);
+    }
+    throw ollamaErr;
   }
-  return ollamaGenerateLocal(prompt, system);
 }
 
 /**
