@@ -218,6 +218,23 @@ export default function SceneListPage({
 
   const cancelEdit = () => setEditingCell(null);
 
+  // Click vs double-click: delay navigation so double-click can cancel it
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleRowClick = (sceneId: string) => {
+    if (editingCell) return;
+    if (clickTimer.current) clearTimeout(clickTimer.current);
+    clickTimer.current = setTimeout(() => {
+      window.location.href = `/projects/${id}/breakdown?scene=${sceneId}`;
+    }, 250);
+  };
+
+  const handleCellDoubleClick = (e: React.MouseEvent, sceneId: string, field: string, value: string) => {
+    e.stopPropagation();
+    if (clickTimer.current) { clearTimeout(clickTimer.current); clickTimer.current = null; }
+    startEdit(sceneId, field, value);
+  };
+
   // Sort toggle
   const handleSort = useCallback(
     (key: SortKey) => {
@@ -740,10 +757,7 @@ export default function SceneListPage({
                   <tr
                     className={isSelected ? "is-selected" : ""}
                     style={{ height: 48, cursor: "pointer" }}
-                    onClick={() => {
-                      if (editingCell) return;
-                      window.location.href = `/projects/${id}/breakdown?scene=${scene.id}`;
-                    }}
+                    onClick={() => handleRowClick(scene.id)}
                   >
                     <td
                       style={{ paddingLeft: 16 }}
@@ -767,7 +781,7 @@ export default function SceneListPage({
                         fontSize: "var(--text-sm)",
                         color: "var(--text-secondary)",
                       }}
-                      onDoubleClick={(e) => { e.stopPropagation(); startEdit(scene.id, "sceneNumber", scene.sceneNumber); }}
+                      onDoubleClick={(e) => handleCellDoubleClick(e, scene.id, "sceneNumber", scene.sceneNumber)}
                     >
                       {editingCell?.sceneId === scene.id && editingCell.field === "sceneNumber" ? (
                         <InlineEditInput
@@ -782,10 +796,7 @@ export default function SceneListPage({
 
                     {/* INT/EXT + DAY/NIGHT combined */}
                     <td
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        startEdit(scene.id, "intExt", `${scene.intExt || "INT"}/${scene.dayNight || "DAY"}`);
-                      }}
+                      onDoubleClick={(e) => handleCellDoubleClick(e, scene.id, "intExt", `${scene.intExt || "INT"}/${scene.dayNight || "DAY"}`)}
                     >
                       {editingCell?.sceneId === scene.id && editingCell.field === "intExt" ? (
                         <InlineEditInput
@@ -831,7 +842,7 @@ export default function SceneListPage({
                         color: "var(--text-primary)",
                         maxWidth: 300,
                       }}
-                      onDoubleClick={(e) => { e.stopPropagation(); startEdit(scene.id, "sceneName", scene.sceneName || ""); }}
+                      onDoubleClick={(e) => handleCellDoubleClick(e, scene.id, "sceneName", scene.sceneName || "")}
                     >
                       {editingCell?.sceneId === scene.id && editingCell.field === "sceneName" ? (
                         <InlineEditInput
@@ -888,7 +899,7 @@ export default function SceneListPage({
                         textAlign: "right",
                         color: "var(--text-primary)",
                       }}
-                      onDoubleClick={(e) => { e.stopPropagation(); startEdit(scene.id, "pageCount", String(scene.pageCount)); }}
+                      onDoubleClick={(e) => handleCellDoubleClick(e, scene.id, "pageCount", String(scene.pageCount))}
                     >
                       {editingCell?.sceneId === scene.id && editingCell.field === "pageCount" ? (
                         <InlineEditInput
