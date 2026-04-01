@@ -52,8 +52,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
 function ToastItem({ toast: t, onDismiss }: { toast: Toast; onDismiss: () => void }) {
   useEffect(() => {
-    if (t.type === "error") return; // errors persist until dismissed
-    const timer = setTimeout(onDismiss, t.duration || 4000);
+    const duration = t.type === "error" ? 8000 : (t.duration || 4000);
+    const timer = setTimeout(onDismiss, duration);
     return () => clearTimeout(timer);
   }, [t, onDismiss]);
 

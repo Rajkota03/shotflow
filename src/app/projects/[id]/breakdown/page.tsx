@@ -1,6 +1,7 @@
 "use client";
 import "./breakdown.css";
 import { useState, useCallback, use, useRef, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -113,9 +114,11 @@ function groupByCategory(elements: SceneElement[]): Record<string, SceneElement[
 
 export default function BreakdownPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const searchParams = useSearchParams();
+  const initialSceneId = searchParams.get("scene");
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [selectedScene, setSelectedScene] = useState<string | null>(null);
+  const [selectedScene, setSelectedScene] = useState<string | null>(initialSceneId);
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const [addValue, setAddValue] = useState("");
   const [editingEl, setEditingEl] = useState<string | null>(null);

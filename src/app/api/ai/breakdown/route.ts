@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { aiBreakdownScene } from "@/lib/ai";
 import { getSessionUser } from "@/lib/auth";
 
+// Allow up to 120s for AI model inference on CPU
+export const maxDuration = 120;
+
 /**
  * POST /api/ai/breakdown
  * Body: { sceneId: string, projectId: string }

@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { aiBreakdownScene } from "@/lib/ai";
 import { getSessionUser } from "@/lib/auth";
 
+export const maxDuration = 300; // 5min for bulk AI processing
+
 /**
  * POST /api/ai/breakdown-all
  * Body: { projectId: string }

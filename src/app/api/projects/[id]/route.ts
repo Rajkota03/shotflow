@@ -18,7 +18,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     where: { id },
     include: {
       shootDays: {
-        orderBy: { order: "asc" },
+        orderBy: [{ dayNumber: "asc" }, { order: "asc" }],
         include: {
           location: true,
           scenes: {

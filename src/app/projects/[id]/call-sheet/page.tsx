@@ -81,20 +81,19 @@ export default function CallSheetPage({
   }
   const dayCast = Array.from(castMap.values());
 
-  // Filter equipment to items linked to this day
+  // Show ALL project equipment on the call sheet (day-linked get specific quantity, others show default)
   const dayEquipment = (equipment || [])
-    .filter((eq: { dayLinks?: { shootDay?: { id: string } }[] }) =>
-      eq.dayLinks?.some(
-        (link: { shootDay?: { id: string } }) =>
-          link.shootDay?.id === selectedDay.id
-      )
-    )
-    .map((eq: { id: string; name: string; category: string; quantity?: number }) => ({
-      id: eq.id,
-      name: eq.name,
-      category: eq.category,
-      quantity: eq.quantity || 1,
-    }));
+    .map((eq: { id: string; name: string; category: string; quantityAvailable?: number; dayLinks?: { shootDay?: { id: string }; quantity?: number }[] }) => {
+      const dayLink = eq.dayLinks?.find(
+        (link: { shootDay?: { id: string } }) => link.shootDay?.id === selectedDay.id
+      );
+      return {
+        id: eq.id,
+        name: eq.name,
+        category: eq.category,
+        quantity: dayLink?.quantity || eq.quantityAvailable || 1,
+      };
+    });
 
   function formatDayLabel(day: { dayNumber: number; date: string | null }) {
     const dateStr = day.date

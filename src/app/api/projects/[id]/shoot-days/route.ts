@@ -6,7 +6,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const days = await prisma.shootDay.findMany({
     where: { projectId: id },
-    orderBy: { order: "asc" },
+    orderBy: [{ dayNumber: "asc" }, { order: "asc" }],
     include: {
       location: true,
       scenes: {

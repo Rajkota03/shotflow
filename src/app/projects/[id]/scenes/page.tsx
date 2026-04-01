@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useCallback, use } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Search,
   ArrowUpDown,
@@ -9,7 +9,10 @@ import {
   Download,
   MapPin,
   X,
+  Archive,
+  Undo2,
 } from "lucide-react";
+import { useToast } from "@/components/ui/toast";
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -32,7 +35,8 @@ type SortDir = "asc" | "desc";
 
 /* ── Helpers ───────────────────────────────────────────── */
 
-function deriveStatus(s: Scene): "Ready" | "Incomplete" | "Scheduled" {
+function deriveStatus(s: Scene): "Ready" | "Incomplete" | "Scheduled" | "Boneyard" {
+  if (s.status === "boneyard") return "Boneyard";
   if (s.shootDayId) return "Scheduled";
   if (s.intExt && s.dayNight && s.pageCount > 0 && s.sceneName) return "Ready";
   return "Incomplete";
@@ -47,10 +51,26 @@ function getWarnings(s: Scene): string[] {
   return w;
 }
 
+/** Natural sort for scene numbers: "1" < "2" < "10" < "70" < "70A" < "70B" */
+function naturalSceneSort(a: string, b: string): number {
+  const numA = parseInt(a) || 0;
+  const numB = parseInt(b) || 0;
+  if (numA !== numB) return numA - numB;
+  const suffA = a.replace(/^\d+/, "");
+  const suffB = b.replace(/^\d+/, "");
+  return suffA.localeCompare(suffB);
+}
+
+/** Get the base scene number (e.g., "70" from "70A", "70B") */
+function baseSceneNumber(sceneNum: string): string {
+  return sceneNum.replace(/[A-Za-z]+$/, "");
+}
+
 const STATUS_BADGE: Record<string, string> = {
   Ready: "sf-badge--green",
   Incomplete: "sf-badge--amber",
   Scheduled: "sf-badge--blue",
+  Boneyard: "sf-badge--muted",
 };
 
 /* ── Component ─────────────────────────────────────────── */
@@ -61,6 +81,8 @@ export default function SceneListPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const { toast } = useToast();
+  const qc = useQueryClient();
 
   // UI state
   const [tab, setTab] = useState<"scriptyard" | "boneyard">("scriptyard");
@@ -68,6 +90,7 @@ export default function SceneListPage({
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [search, setSearch] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
   const [filterIE, setFilterIE] = useState<"all" | "INT" | "EXT">("all");
   const [filterDN, setFilterDN] = useState<"all" | "DAY" | "NIGHT">("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -79,6 +102,25 @@ export default function SceneListPage({
       fetch(`/api/projects/${id}/scenes`).then((r) => r.json()),
   });
 
+  // Boneyard mutation
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ sceneIds, status }: { sceneIds: string[]; status: string }) => {
+      await Promise.all(
+        sceneIds.map((sceneId) =>
+          fetch(`/api/projects/${id}/scenes/${sceneId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+          })
+        )
+      );
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["scenes", id] });
+      setSelected(new Set());
+    },
+  });
+
   // Sort toggle
   const handleSort = useCallback(
     (key: SortKey) => {
@@ -88,13 +130,25 @@ export default function SceneListPage({
         setSortKey(key);
         setSortDir("asc");
       }
+      setSortOpen(false);
     },
     [sortKey],
   );
 
+  // Split scenes into scriptyard vs boneyard
+  const scriptyardScenes = useMemo(() => scenes.filter((s) => s.status !== "boneyard"), [scenes]);
+  const boneyardScenes = useMemo(() => scenes.filter((s) => s.status === "boneyard"), [scenes]);
+  const activeScenes = tab === "scriptyard" ? scriptyardScenes : boneyardScenes;
+
+  // Count unique base scene numbers (70, 70A, 70B = 1 scene)
+  const uniqueSceneCount = useMemo(() => {
+    const bases = new Set(scriptyardScenes.map((s) => baseSceneNumber(s.sceneNumber)));
+    return bases.size;
+  }, [scriptyardScenes]);
+
   // Filter + sort pipeline
   const filtered = useMemo(() => {
-    let list = [...scenes];
+    let list = [...activeScenes];
 
     if (filterIE !== "all") list = list.filter((s) => s.intExt === filterIE);
     if (filterDN !== "all") list = list.filter((s) => s.dayNight === filterDN);
@@ -103,7 +157,7 @@ export default function SceneListPage({
       list = list.filter(
         (s) =>
           s.sceneName?.toLowerCase().includes(q) ||
-          s.sceneNumber.includes(q) ||
+          s.sceneNumber.toLowerCase().includes(q) ||
           s.castLinks?.some((c) =>
             c.castMember.name.toLowerCase().includes(q),
           ),
@@ -120,12 +174,12 @@ export default function SceneListPage({
         case "sceneName":
           return (a.sceneName ?? "").localeCompare(b.sceneName ?? "") * dir;
         default:
-          return (Number(a.sceneNumber) - Number(b.sceneNumber)) * dir;
+          return naturalSceneSort(a.sceneNumber, b.sceneNumber) * dir;
       }
     });
 
     return list;
-  }, [scenes, filterIE, filterDN, search, sortKey, sortDir]);
+  }, [activeScenes, filterIE, filterDN, search, sortKey, sortDir]);
 
   const totalPages = filtered.reduce((acc, s) => acc + s.pageCount, 0);
 
@@ -148,6 +202,28 @@ export default function SceneListPage({
       else next.add(sceneId);
       return next;
     });
+  };
+
+  const moveToBoneyard = () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    updateStatusMutation.mutate(
+      { sceneIds: ids, status: "boneyard" },
+      {
+        onSuccess: () => toast(`${ids.length} scene${ids.length > 1 ? "s" : ""} moved to Boneyard`, "success"),
+      }
+    );
+  };
+
+  const restoreFromBoneyard = () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    updateStatusMutation.mutate(
+      { sceneIds: ids, status: "unscheduled" },
+      {
+        onSuccess: () => toast(`${ids.length} scene${ids.length > 1 ? "s" : ""} restored to Scriptyard`, "success"),
+      }
+    );
   };
 
   // Active filter count
@@ -216,28 +292,83 @@ export default function SceneListPage({
         <div className="sf-tabs" style={{ borderBottom: "none" }}>
           <button
             className={`sf-tab ${tab === "scriptyard" ? "is-active" : ""}`}
-            onClick={() => setTab("scriptyard")}
+            onClick={() => { setTab("scriptyard"); setSelected(new Set()); }}
+            title="Active scenes in your screenplay"
           >
-            Scriptyard {scenes.length}
+            Scriptyard {scriptyardScenes.length}
           </button>
           <button
             className={`sf-tab ${tab === "boneyard" ? "is-active" : ""}`}
-            onClick={() => setTab("boneyard")}
+            onClick={() => { setTab("boneyard"); setSelected(new Set()); }}
+            title="Scenes removed from the active schedule — stored here for reference or restoration"
           >
-            Boneyard 0
+            Boneyard {boneyardScenes.length}
           </button>
         </div>
 
         {/* Actions */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button
-            className="sf-btn sf-btn--secondary sf-btn--sm"
-            onClick={() => handleSort(sortKey)}
-            title="Sort"
-          >
-            <ArrowUpDown size={14} />
-            <span style={{ marginLeft: 4 }}>Sort</span>
-          </button>
+          {/* Sort dropdown */}
+          <div style={{ position: "relative" }}>
+            <button
+              className="sf-btn sf-btn--secondary sf-btn--sm"
+              onClick={() => setSortOpen((o) => !o)}
+              title="Sort"
+            >
+              <ArrowUpDown size={14} />
+              <span style={{ marginLeft: 4 }}>Sort</span>
+            </button>
+
+            {sortOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 4px)",
+                  right: 0,
+                  background: "var(--bg-surface-3)",
+                  border: "1px solid var(--border-default)",
+                  borderRadius: "var(--radius-lg)",
+                  padding: "var(--space-3)",
+                  zIndex: 20,
+                  minWidth: 180,
+                  boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                }}
+              >
+                {([
+                  { key: "sceneNumber" as SortKey, label: "Scene Number" },
+                  { key: "sceneName" as SortKey, label: "Location" },
+                  { key: "pageCount" as SortKey, label: "Page Count" },
+                  { key: "status" as SortKey, label: "Status" },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.key}
+                    onClick={() => handleSort(opt.key)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      width: "100%",
+                      padding: "6px 10px",
+                      borderRadius: "var(--radius-md)",
+                      fontSize: "var(--text-sm)",
+                      color: sortKey === opt.key ? "var(--text-primary)" : "var(--text-secondary)",
+                      background: sortKey === opt.key ? "var(--bg-surface-1)" : "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <span>{opt.label}</span>
+                    {sortKey === opt.key && (
+                      <span style={{ opacity: 0.5, fontSize: 12 }}>
+                        {sortDir === "asc" ? "↑" : "↓"}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div style={{ position: "relative" }}>
             <button
@@ -379,39 +510,60 @@ export default function SceneListPage({
         </div>
       </div>
 
+      {/* ── Tab descriptions ──────────────────────────────── */}
+      {tab === "boneyard" && boneyardScenes.length === 0 && (
+        <div style={{
+          padding: "24px var(--space-6)",
+          textAlign: "center",
+          color: "var(--text-tertiary)",
+          fontSize: "var(--text-sm)",
+        }}>
+          <Archive size={32} style={{ margin: "0 auto 12px", opacity: 0.4 }} />
+          <p style={{ marginBottom: 4, color: "var(--text-secondary)" }}>Boneyard is empty</p>
+          <p>Scenes you remove from the active schedule are stored here. You can restore them at any time.</p>
+        </div>
+      )}
+
       {/* ── Summary bar ──────────────────────────────────── */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          padding: "0 var(--space-6)",
-          height: 32,
-          flexShrink: 0,
-          borderBottom: "1px solid var(--border-subtle)",
-          fontSize: "var(--text-xs)",
-          color: "var(--text-secondary)",
-          gap: 16,
-        }}
-      >
-        <span>
-          <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
-            {filtered.length}
-          </span>{" "}
-          scenes
-        </span>
-        <span>
-          <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
-            {totalPages.toFixed(1)}
-          </span>{" "}
-          pages
-        </span>
-        <span>
-          <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
-            {new Set(filtered.map((s) => s.sceneName)).size}
-          </span>{" "}
-          locations
-        </span>
-      </div>
+      {(tab === "scriptyard" || filtered.length > 0) && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            padding: "0 var(--space-6)",
+            height: 32,
+            flexShrink: 0,
+            borderBottom: "1px solid var(--border-subtle)",
+            fontSize: "var(--text-xs)",
+            color: "var(--text-secondary)",
+            gap: 16,
+          }}
+        >
+          <span>
+            <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
+              {uniqueSceneCount}
+            </span>{" "}
+            scenes
+          </span>
+          <span>
+            <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
+              {totalPages.toFixed(1)}
+            </span>{" "}
+            pages
+          </span>
+          <span>
+            <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
+              {new Set(filtered.map((s) => s.sceneName)).size}
+            </span>{" "}
+            locations
+          </span>
+          {filtered.length !== activeScenes.length && (
+            <span style={{ fontStyle: "italic" }}>
+              (showing {filtered.length} of {activeScenes.length})
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ── Table ────────────────────────────────────────── */}
       <div style={{ flex: 1, overflow: "auto" }}>
@@ -478,7 +630,7 @@ export default function SceneListPage({
           <tbody>
             {filtered.map((scene) => {
               const status = deriveStatus(scene);
-              const warnings = getWarnings(scene);
+              const warnings = tab === "scriptyard" ? getWarnings(scene) : [];
               const isSelected = selected.has(scene.id);
               const castNames =
                 scene.castLinks?.map((c) => c.castMember.name) ?? [];
@@ -493,7 +645,7 @@ export default function SceneListPage({
                     className={isSelected ? "is-selected" : ""}
                     style={{ height: 48, cursor: "pointer" }}
                     onClick={() =>
-                      (window.location.href = `/projects/${id}/breakdown`)
+                      (window.location.href = `/projects/${id}/breakdown?scene=${scene.id}`)
                     }
                   >
                     <td
@@ -669,21 +821,43 @@ export default function SceneListPage({
             }}
           />
 
-          <button className="sf-btn sf-btn--secondary sf-btn--sm">
-            Assign Location
-          </button>
-          <button className="sf-btn sf-btn--secondary sf-btn--sm">
-            Assign Unit
-          </button>
-          <button className="sf-btn sf-btn--secondary sf-btn--sm">
-            Schedule
-          </button>
+          {tab === "scriptyard" ? (
+            <>
+              <button className="sf-btn sf-btn--secondary sf-btn--sm">
+                Assign Location
+              </button>
+              <button className="sf-btn sf-btn--secondary sf-btn--sm">
+                Assign Unit
+              </button>
+              <button className="sf-btn sf-btn--secondary sf-btn--sm">
+                Schedule
+              </button>
 
-          <div style={{ flex: 1 }} />
+              <div style={{ flex: 1 }} />
 
-          <button className="sf-btn sf-btn--danger sf-btn--sm">
-            Move to Boneyard
-          </button>
+              <button
+                className="sf-btn sf-btn--danger sf-btn--sm"
+                onClick={moveToBoneyard}
+                disabled={updateStatusMutation.isPending}
+              >
+                <Archive size={13} style={{ marginRight: 4 }} />
+                Move to Boneyard
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="sf-btn sf-btn--primary sf-btn--sm"
+                onClick={restoreFromBoneyard}
+                disabled={updateStatusMutation.isPending}
+              >
+                <Undo2 size={13} style={{ marginRight: 4 }} />
+                Restore to Scriptyard
+              </button>
+
+              <div style={{ flex: 1 }} />
+            </>
+          )}
 
           <button
             className="sf-btn sf-btn--ghost sf-btn--sm"

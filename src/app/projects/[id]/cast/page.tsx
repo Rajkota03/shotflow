@@ -255,7 +255,14 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
 
                         {/* Scenes */}
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                          {member.sceneLinks.slice(0, 5).map((l) => (
+                          {[...member.sceneLinks]
+                            .sort((a, b) => {
+                              const numA = parseInt(a.scene.sceneNumber) || 0;
+                              const numB = parseInt(b.scene.sceneNumber) || 0;
+                              if (numA !== numB) return numA - numB;
+                              return a.scene.sceneNumber.localeCompare(b.scene.sceneNumber);
+                            })
+                            .slice(0, 5).map((l) => (
                             <span
                               key={l.scene.id}
                               style={{

@@ -63,7 +63,7 @@ async function anthropicGenerate(prompt: string, system?: string): Promise<strin
  */
 async function ollamaGenerateLocal(prompt: string, system?: string): Promise<string> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120_000);
+  const timeout = setTimeout(() => controller.abort(), 300_000); // 5min for large models on CPU
 
   try {
     const res = await fetch(`${OLLAMA_URL}/api/generate`, {

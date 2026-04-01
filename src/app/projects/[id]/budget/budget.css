@@ -608,6 +608,68 @@
   color: var(--blue-primary);
 }
 
+/* ── Subcategory rows (crew departments) ─────── */
+.budget-table__subcategory-row td {
+  background: rgba(245, 166, 35, 0.04);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 10px;
+  padding-bottom: 4px;
+}
+
+.budget-subcategory-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--amber);
+}
+
+.budget-subcategory-total {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-add-btn--inline {
+  display: inline-flex;
+  padding: 2px;
+  margin: 0;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.budget-add-btn--inline:hover {
+  opacity: 1;
+  color: var(--amber);
+}
+
+.budget-add-crew-dept {
+  padding: 8px 14px;
+}
+
+.budget-add-crew-dept select {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  text-transform: capitalize;
+}
+
+.budget-add-crew-dept select:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
 /* ── Footer ────────────────────────────────────── */
 .budget-footer {
   margin-top: 20px;

@@ -521,10 +521,31 @@ function StripDrawer({
 }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"All" | "INT" | "EXT" | "NIGHT" | "DAY">("All");
+  const [filterLocation, setFilterLocation] = useState<string>("all");
+  const [filterCast, setFilterCast] = useState<string>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const dayPages = dayScenes.reduce((s, sc) => s + sc.pageCount, 0);
   const date = day ? formatBoardDate(day.date) : null;
+
+  // Unique locations and cast from unscheduled scenes
+  const uniqueLocations = useMemo(() => {
+    const locs = new Set<string>();
+    for (const s of unscheduledScenes) {
+      if (s.sceneName) locs.add(s.sceneName);
+    }
+    return Array.from(locs).sort();
+  }, [unscheduledScenes]);
+
+  const uniqueCast = useMemo(() => {
+    const cast = new Set<string>();
+    for (const s of unscheduledScenes) {
+      for (const link of s.castLinks || []) {
+        if (link.castMember?.name) cast.add(link.castMember.name);
+      }
+    }
+    return Array.from(cast).sort();
+  }, [unscheduledScenes]);
 
   const filtered = useMemo(() => {
     return unscheduledScenes.filter((s) => {
@@ -535,9 +556,13 @@ function StripDrawer({
         (filter === "EXT" && s.intExt === "EXT") ||
         (filter === "NIGHT" && (s.dayNight === "NIGHT" || s.dayNight === "DUSK")) ||
         (filter === "DAY" && s.dayNight === "DAY");
-      return matchSearch && matchFilter;
+      const matchLocation = filterLocation === "all" || s.sceneName === filterLocation;
+      const matchCast = filterCast === "all" || (s.castLinks || []).some(
+        (link) => link.castMember?.name === filterCast
+      );
+      return matchSearch && matchFilter && matchLocation && matchCast;
     });
-  }, [unscheduledScenes, search, filter]);
+  }, [unscheduledScenes, search, filter, filterLocation, filterCast]);
 
   const toggleScene = (id: string) => {
     setSelected((prev) => {
@@ -605,6 +630,33 @@ function StripDrawer({
                   {f}
                 </button>
               ))}
+            </div>
+
+            <div className="strip-drawer__filter-row strip-drawer__filter-row--selects">
+              {uniqueLocations.length > 1 && (
+                <select
+                  className="strip-drawer__select"
+                  value={filterLocation}
+                  onChange={(e) => setFilterLocation(e.target.value)}
+                >
+                  <option value="all">All Locations</option>
+                  {uniqueLocations.map((loc) => (
+                    <option key={loc} value={loc}>{loc.length > 22 ? loc.slice(0, 22) + "…" : loc}</option>
+                  ))}
+                </select>
+              )}
+              {uniqueCast.length > 1 && (
+                <select
+                  className="strip-drawer__select"
+                  value={filterCast}
+                  onChange={(e) => setFilterCast(e.target.value)}
+                >
+                  <option value="all">All Cast</option>
+                  {uniqueCast.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div className="strip-drawer__toolbar">

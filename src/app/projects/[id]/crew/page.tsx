@@ -16,6 +16,18 @@ const DEPT_COLORS: Record<string, string> = {
   sound: "var(--dept-sound)", art: "var(--dept-art)", costume: "var(--dept-costume)", makeup: "var(--dept-makeup)", post: "var(--dept-post)",
 };
 
+const PREDEFINED_ROLES: Record<string, string[]> = {
+  production: ["Producer", "Executive Producer", "Line Producer", "Production Manager", "Production Coordinator", "Production Assistant", "Assistant Director (1st AD)", "Assistant Director (2nd AD)", "Script Supervisor"],
+  camera: ["Director of Photography", "Camera Operator", "1st AC (Focus Puller)", "2nd AC (Clapper/Loader)", "DIT", "Steadicam Operator", "Drone Operator"],
+  lighting: ["Gaffer", "Best Boy Electric", "Electrician", "Lighting Technician", "Generator Operator"],
+  grip: ["Key Grip", "Best Boy Grip", "Dolly Grip", "Grip", "Rigging Grip"],
+  sound: ["Production Sound Mixer", "Boom Operator", "Sound Utility", "Playback Operator"],
+  art: ["Production Designer", "Art Director", "Set Decorator", "Set Dresser", "Props Master", "Props Assistant", "Scenic Artist"],
+  costume: ["Costume Designer", "Wardrobe Supervisor", "Wardrobe Assistant", "Dresser", "Tailor"],
+  makeup: ["Makeup Department Head", "Makeup Artist", "Hair Stylist", "SFX Makeup Artist", "Prosthetics Artist"],
+  post: ["Editor", "Assistant Editor", "VFX Supervisor", "Colorist", "Sound Designer", "Sound Editor", "Music Composer", "DI Supervisor"],
+};
+
 export default function CrewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const qc = useQueryClient();
@@ -158,9 +170,21 @@ export default function CrewPage({ params }: { params: Promise<{ id: string }> }
                 </div>
                 <div>
                   <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>Role *</label>
-                  <input className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ background: "var(--bg-void)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
-                    placeholder="Director of Photography"
-                    value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} />
+                  <div style={{ position: "relative" }}>
+                    <input
+                      className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                      style={{ background: "var(--bg-void)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
+                      placeholder="Select or type a role..."
+                      value={form.role}
+                      onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+                      list={`roles-${form.department}`}
+                    />
+                    <datalist id={`roles-${form.department}`}>
+                      {(PREDEFINED_ROLES[form.department] || []).map(r => (
+                        <option key={r} value={r} />
+                      ))}
+                    </datalist>
+                  </div>
                 </div>
               </div>
               <div>

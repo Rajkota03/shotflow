@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { aiGenerateSynopsis } from "@/lib/ai";
 import { getSessionUser } from "@/lib/auth";
 
+export const maxDuration = 120;
+
 /**
  * POST /api/ai/synopsis
  * Body: { sceneId: string }

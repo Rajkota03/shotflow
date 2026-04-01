@@ -16,6 +16,13 @@ const CAT_COLORS: Record<string, string> = {
   camera: "var(--dept-camera)", lighting: "var(--dept-lighting)", grip: "var(--dept-grip)", sound: "var(--dept-sound)",
 };
 
+const PREDEFINED_EQUIPMENT: Record<string, string[]> = {
+  camera: ["ARRI Alexa Mini", "ARRI Alexa Mini LF", "RED V-Raptor", "Sony FX6", "Sony FX9", "Blackmagic URSA Mini", "Canon C70", "Canon C300 III", "DJI Ronin 4D", "Drone (DJI Inspire 3)", "GoPro Hero", "Tripod", "Fluid Head", "Gimbal (DJI RS4)", "Slider", "Dana Dolly", "Follow Focus", "Matte Box", "Monitor (SmallHD)", "Video Assist", "Lens Kit (Primes)", "Lens Kit (Zoom)", "Anamorphic Lens Set"],
+  lighting: ["ARRI SkyPanel S60", "ARRI SkyPanel S120", "Aputure 600d Pro", "Aputure 300d II", "Aputure MC", "Aputure Amaran 200d", "Kino Flo Celeb 450", "LED Panel (Litepanels)", "HMI 1.2K", "HMI 2.5K", "HMI 4K", "Tungsten 1K", "Tungsten 2K", "China Ball", "Bounce Board (4x4)", "Silk (4x4)", "Diffusion Frame (6x6)", "Butterfly Frame (12x12)", "Blackout Cloth", "Gel Kit", "Dimmer Board"],
+  grip: ["C-Stand (40\")", "C-Stand (20\")", "Combo Stand", "Hi-Roller Stand", "Apple Box Set", "Sandbag", "Speed Rail", "Mafer Clamp", "Cardellini Clamp", "Grip Arm", "Flag (4x4)", "Floppy (4x4)", "Net (Single)", "Net (Double)", "Dolly (Fisher 10)", "Dolly Track (Straight)", "Dolly Track (Curved)", "Jib Arm", "Crane", "Scaffold", "Ratchet Strap Set"],
+  sound: ["Sound Mixer (Sound Devices 888)", "Sound Mixer (Zoom F8n Pro)", "Boom Pole (Carbon Fiber)", "Shotgun Mic (Sennheiser MKH 416)", "Shotgun Mic (Rode NTG5)", "Wireless Lav Kit (Sennheiser)", "Wireless Lav Kit (Lectrosonics)", "Wireless Lav Kit (DJI Mic 2)", "Lavalier Mic (Sanken COS-11D)", "Headphones (Sony 7506)", "IFB System", "Timecode Box (Tentacle Sync)", "Portable Recorder (Zoom H6)", "Wind Shield (Rycote)", "Sound Blanket", "Playback Speaker"],
+};
+
 export default function EquipmentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const qc = useQueryClient();
@@ -164,7 +171,13 @@ export default function EquipmentPage({ params }: { params: Promise<{ id: string
                 <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>Equipment Name *</label>
                 <input className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ background: "var(--bg-void)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
                   placeholder="ARRI Alexa Mini, Aputure 600d..."
+                  list={`equip-${form.category}`}
                   value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+                <datalist id={`equip-${form.category}`}>
+                  {(PREDEFINED_EQUIPMENT[form.category] || []).map(e => (
+                    <option key={e} value={e} />
+                  ))}
+                </datalist>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

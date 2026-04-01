@@ -1,6 +1,6 @@
 "use client";
 import "./budget.css";
-import { useState, useEffect, use, useMemo, useCallback } from "react";
+import React, { useState, useEffect, use, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/components/ui/toast";
 import { formatCurrency, amountToWords } from "@/lib/utils";
@@ -36,6 +36,7 @@ interface LineItem {
   rate: number;
   quantity: number;
   rateType: RateType;
+  subcategory?: string;
 }
 
 interface BudgetCategory {
@@ -64,8 +65,8 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function makeItem(name: string, rate: number, quantity: number, rateType: RateType = "daily"): LineItem {
-  return { id: uid(), name, rate, quantity, rateType };
+function makeItem(name: string, rate: number, quantity: number, rateType: RateType = "daily", subcategory?: string): LineItem {
+  return { id: uid(), name, rate, quantity, rateType, ...(subcategory ? { subcategory } : {}) };
 }
 
 function getDefaultCategories(): BudgetCategory[] {
@@ -82,16 +83,19 @@ function getDefaultCategories(): BudgetCategory[] {
     {
       id: "crew", label: "Crew", icon: "🎬", collapsed: false,
       items: [
-        makeItem("Director", 5000, 1, "daily"),
-        makeItem("Assistant Director", 2500, 1, "daily"),
-        makeItem("Producer", 4000, 1, "daily"),
-        makeItem("DP / Cinematographer", 3500, 1, "daily"),
-        makeItem("1st AC", 1800, 1, "daily"),
-        makeItem("Gaffer", 2000, 1, "daily"),
-        makeItem("Key Grip", 1800, 1, "daily"),
-        makeItem("Sound Mixer", 2000, 1, "daily"),
-        makeItem("Boom Operator", 1200, 1, "daily"),
-        makeItem("Script Supervisor", 1500, 1, "daily"),
+        makeItem("Director", 5000, 1, "daily", "production"),
+        makeItem("Assistant Director", 2500, 1, "daily", "production"),
+        makeItem("Producer", 4000, 1, "daily", "production"),
+        makeItem("Script Supervisor", 1500, 1, "daily", "production"),
+        makeItem("DP / Cinematographer", 3500, 1, "daily", "camera"),
+        makeItem("1st AC", 1800, 1, "daily", "camera"),
+        makeItem("2nd AC", 1200, 1, "daily", "camera"),
+        makeItem("Gaffer", 2000, 1, "daily", "lighting"),
+        makeItem("Best Boy Electric", 1500, 1, "daily", "lighting"),
+        makeItem("Key Grip", 1800, 1, "daily", "grip"),
+        makeItem("Dolly Grip", 1200, 1, "daily", "grip"),
+        makeItem("Sound Mixer", 2000, 1, "daily", "sound"),
+        makeItem("Boom Operator", 1200, 1, "daily", "sound"),
       ],
     },
     {
@@ -258,6 +262,16 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
     queryFn: () => fetch(`/api/projects/${id}/cast`).then((r) => r.json()),
   });
 
+  interface CrewData {
+    id: string; name: string; department: string; role: string;
+    dayRate: number; contractedDays: number;
+  }
+
+  const { data: crewMembers } = useQuery<CrewData[]>({
+    queryKey: ["crew", id],
+    queryFn: () => fetch(`/api/projects/${id}/crew`).then((r) => r.json()),
+  });
+
   const { data: schedules } = useQuery({
     queryKey: ["schedules", id],
     queryFn: () => fetch(`/api/projects/${id}/schedules`).then((r) => r.json()),
@@ -329,6 +343,34 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
       return updated;
     });
   }, [castMembers, id]);
+
+  // When crew data loads, populate crew category with real crew members grouped by department
+  useEffect(() => {
+    if (!crewMembers || crewMembers.length === 0) return;
+
+    setCategories((prev) => {
+      const crewIdx = prev.findIndex((c) => c.id === "crew");
+      if (crewIdx === -1) return prev;
+
+      const existing = prev[crewIdx].items;
+      const hasGenericDefaults = existing.some((item) =>
+        ["Director", "Assistant Director", "Producer", "DP / Cinematographer"].includes(item.name)
+      );
+      if (!hasGenericDefaults) return prev;
+
+      const crewItems: LineItem[] = crewMembers.map((cm) => {
+        const displayName = cm.role ? `${cm.name} (${cm.role})` : cm.name;
+        return makeItem(displayName, cm.dayRate || 0, cm.contractedDays || 1, "daily", cm.department || "production");
+      });
+
+      if (crewItems.length === 0) return prev;
+
+      const updated = [...prev];
+      updated[crewIdx] = { ...updated[crewIdx], items: crewItems };
+      saveBudget(id, updated);
+      return updated;
+    });
+  }, [crewMembers, id]);
 
   // When project loads, auto-populate locations from script data (always ALL locations)
   useEffect(() => {
@@ -569,10 +611,18 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
     }));
   };
 
-  const addItem = (catId: string) => {
+  const addItem = (catId: string, subcategory?: string) => {
     persist(categories.map((c) => {
       if (c.id !== catId) return c;
-      return { ...c, items: [...c.items, makeItem("New Item", 0, 1, "daily")], collapsed: false };
+      const newItem = makeItem("New Item", 0, 1, "daily", subcategory);
+      if (subcategory) {
+        // Insert after last item in same subcategory
+        const lastIdx = c.items.reduce((idx, item, i) => item.subcategory === subcategory ? i : idx, -1);
+        const items = [...c.items];
+        items.splice(lastIdx + 1, 0, newItem);
+        return { ...c, items, collapsed: false };
+      }
+      return { ...c, items: [...c.items, newItem], collapsed: false };
     }));
   };
 
@@ -593,7 +643,75 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
     if (next > 0) setCustomDays([...customDays, next]);
   };
 
-  /* ── Render ────────────────────────────────────── */
+  /* ── Render helpers ─────────────────────────────── */
+
+  const renderBudgetRow = (item: LineItem, catId: string) => {
+    const isContingency = item.name.toLowerCase().includes("contingency");
+    const itemTotal = getItemTotal(item, shootDays);
+    return (
+      <tr key={item.id} className={cn(isContingency && "budget-table__auto-row")}>
+        <td>
+          <input
+            className="budget-inline-input budget-inline-input--name"
+            value={item.name}
+            onChange={(e) => updateItem(catId, item.id, "name", e.target.value)}
+          />
+        </td>
+        <td>
+          {isContingency ? (
+            <span className="budget-auto-label">auto 10%</span>
+          ) : (
+            <input
+              className="budget-inline-input budget-inline-input--num"
+              type="number"
+              min={0}
+              value={item.rate}
+              onChange={(e) => updateItem(catId, item.id, "rate", Number(e.target.value))}
+            />
+          )}
+        </td>
+        <td>
+          <select
+            className="budget-inline-select"
+            value={item.rateType}
+            onChange={(e) => updateItem(catId, item.id, "rateType", e.target.value)}
+            disabled={isContingency}
+          >
+            <option value="daily">/ day</option>
+            <option value="weekly">/ week</option>
+            <option value="flat">flat</option>
+          </select>
+        </td>
+        <td>
+          {isContingency ? (
+            <span className="budget-auto-label">—</span>
+          ) : (
+            <input
+              className="budget-inline-input budget-inline-input--num budget-inline-input--qty"
+              type="number"
+              min={0}
+              value={item.quantity}
+              onChange={(e) => updateItem(catId, item.id, "quantity", Number(e.target.value))}
+            />
+          )}
+        </td>
+        <td className="text-right">
+          <span className="budget-cell-total">{fmt(itemTotal)}</span>
+        </td>
+        <td>
+          {!isContingency && (
+            <button
+              type="button"
+              className="budget-delete-btn"
+              onClick={() => deleteItem(catId, item.id)}
+            >
+              <Trash2 size={12} />
+            </button>
+          )}
+        </td>
+      </tr>
+    );
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -801,83 +919,77 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
                           </tr>
                         </thead>
                         <tbody>
-                          {cat.items.map((item) => {
-                            const isContingency = item.name.toLowerCase().includes("contingency");
-                            const itemTotal = getItemTotal(item, shootDays);
-                            return (
-                              <tr key={item.id} className={cn(isContingency && "budget-table__auto-row")}>
-                                <td>
-                                  <input
-                                    className="budget-inline-input budget-inline-input--name"
-                                    value={item.name}
-                                    onChange={(e) => updateItem(cat.id, item.id, "name", e.target.value)}
-                                  />
-                                </td>
-                                <td>
-                                  {isContingency ? (
-                                    <span className="budget-auto-label">auto 10%</span>
-                                  ) : (
-                                    <input
-                                      className="budget-inline-input budget-inline-input--num"
-                                      type="number"
-                                      min={0}
-                                      value={item.rate}
-                                      onChange={(e) => updateItem(cat.id, item.id, "rate", Number(e.target.value))}
-                                    />
-                                  )}
-                                </td>
-                                <td>
-                                  <select
-                                    className="budget-inline-select"
-                                    value={item.rateType}
-                                    onChange={(e) => updateItem(cat.id, item.id, "rateType", e.target.value)}
-                                    disabled={isContingency}
-                                  >
-                                    <option value="daily">/ day</option>
-                                    <option value="weekly">/ week</option>
-                                    <option value="flat">flat</option>
-                                  </select>
-                                </td>
-                                <td>
-                                  {isContingency ? (
-                                    <span className="budget-auto-label">—</span>
-                                  ) : (
-                                    <input
-                                      className="budget-inline-input budget-inline-input--num budget-inline-input--qty"
-                                      type="number"
-                                      min={0}
-                                      value={item.quantity}
-                                      onChange={(e) => updateItem(cat.id, item.id, "quantity", Number(e.target.value))}
-                                    />
-                                  )}
-                                </td>
-                                <td className="text-right">
-                                  <span className="budget-cell-total">{fmt(itemTotal)}</span>
-                                </td>
-                                <td>
-                                  {!isContingency && (
-                                    <button
-                                      type="button"
-                                      className="budget-delete-btn"
-                                      onClick={() => deleteItem(cat.id, item.id)}
-                                    >
-                                      <Trash2 size={12} />
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
+                          {(() => {
+                            const hasSubcategories = cat.id === "crew" && cat.items.some((i) => i.subcategory);
+                            if (!hasSubcategories) {
+                              return cat.items.map((item) => renderBudgetRow(item, cat.id));
+                            }
+                            // Group by subcategory
+                            const groups: { sub: string; items: LineItem[] }[] = [];
+                            const seen = new Set<string>();
+                            for (const item of cat.items) {
+                              const sub = item.subcategory || "other";
+                              if (!seen.has(sub)) {
+                                seen.add(sub);
+                                groups.push({ sub, items: [] });
+                              }
+                              groups.find((g) => g.sub === sub)!.items.push(item);
+                            }
+                            return groups.map((group) => {
+                              const subTotal = group.items.reduce((s, i) => s + getItemTotal(i, shootDays), 0);
+                              return (
+                                <React.Fragment key={group.sub}>
+                                  <tr className="budget-table__subcategory-row">
+                                    <td colSpan={5}>
+                                      <span className="budget-subcategory-label">{group.sub}</span>
+                                      <span className="budget-subcategory-total">{fmt(subTotal)}</span>
+                                    </td>
+                                    <td>
+                                      <button
+                                        type="button"
+                                        className="budget-add-btn budget-add-btn--inline"
+                                        onClick={() => addItem(cat.id, group.sub)}
+                                        title={`Add to ${group.sub}`}
+                                      >
+                                        <Plus size={10} />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                  {group.items.map((item) => renderBudgetRow(item, cat.id))}
+                                </React.Fragment>
+                              );
+                            });
+                          })()}
                         </tbody>
                       </table>
-                      <button
-                        type="button"
-                        className="budget-add-btn"
-                        onClick={() => addItem(cat.id)}
-                      >
-                        <Plus size={12} />
-                        Add line item
-                      </button>
+                      {cat.id === "crew" && cat.items.some((i) => i.subcategory) ? (
+                        <div className="budget-add-crew-dept">
+                          <select
+                            className="budget-inline-select"
+                            defaultValue=""
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                addItem(cat.id, e.target.value);
+                                e.target.value = "";
+                              }
+                            }}
+                          >
+                            <option value="" disabled>+ Add crew to department...</option>
+                            {["production", "camera", "lighting", "grip", "sound", "art", "costume", "makeup", "post"].map((d) => (
+                              <option key={d} value={d}>{d}</option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="budget-add-btn"
+                          onClick={() => addItem(cat.id)}
+                        >
+                          <Plus size={12} />
+                          Add line item
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
