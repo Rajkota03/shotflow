@@ -589,7 +589,7 @@ export default function SceneListPage({
                   </span>
                 )}
               </th>
-              <th style={{ width: 56 }}>I/E</th>
+              <th style={{ width: 80 }}>Type</th>
               <th
                 style={{ cursor: "pointer" }}
                 onClick={() => handleSort("sceneName")}
@@ -601,7 +601,6 @@ export default function SceneListPage({
                   </span>
                 )}
               </th>
-              <th style={{ width: 56 }}>D/N</th>
               <th style={{ width: 120 }}>Cast</th>
               <th
                 style={{ width: 72, textAlign: "right", cursor: "pointer" }}
@@ -674,17 +673,20 @@ export default function SceneListPage({
                       {scene.sceneNumber}
                     </td>
 
-                    {/* I/E badge */}
+                    {/* INT/EXT + DAY/NIGHT combined */}
                     <td>
-                      {scene.intExt && (
+                      {(scene.intExt || scene.dayNight) && (
                         <span
                           className={`sf-badge ${
-                            scene.intExt === "EXT"
-                              ? "sf-badge--ext"
-                              : "sf-badge--int"
+                            scene.dayNight === "NIGHT"
+                              ? "sf-badge--night"
+                              : scene.intExt === "EXT"
+                                ? "sf-badge--ext"
+                                : "sf-badge--int"
                           }`}
+                          style={{ fontSize: 10 }}
                         >
-                          {scene.intExt}
+                          {[scene.intExt, scene.dayNight].filter(Boolean).join("/")}
                         </span>
                       )}
                     </td>
@@ -714,20 +716,6 @@ export default function SceneListPage({
                       )}
                     </td>
 
-                    {/* D/N badge */}
-                    <td>
-                      {scene.dayNight && (
-                        <span
-                          className={`sf-badge ${
-                            scene.dayNight === "NIGHT"
-                              ? "sf-badge--night"
-                              : "sf-badge--day"
-                          }`}
-                        >
-                          {scene.dayNight}
-                        </span>
-                      )}
-                    </td>
 
                     {/* Cast */}
                     <td
@@ -769,7 +757,7 @@ export default function SceneListPage({
                   {warnings.length > 0 && (
                     <tr style={{ height: "auto" }}>
                       <td
-                        colSpan={8}
+                        colSpan={7}
                         style={{ padding: 0, border: "none" }}
                       >
                         <div className="sf-inline-warning">

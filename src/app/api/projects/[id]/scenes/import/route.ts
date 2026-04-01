@@ -13,6 +13,25 @@ interface FrontendScene {
   characters?: string[]; // characters in this scene
 }
 
+// Extract a meaningful synopsis from scene content
+// Strips character names (ALL CAPS lines), parentheticals, and takes first few action/dialogue lines
+function extractSynopsis(content: string): string {
+  const lines = content.split("\n").map((l) => l.trim()).filter(Boolean);
+  const meaningful: string[] = [];
+  for (const line of lines) {
+    // Skip all-caps character names (dialogue cues)
+    if (/^[A-Z][A-Z\s.'()-]+$/.test(line) && line.length < 40) continue;
+    // Skip parentheticals
+    if (/^\(.*\)$/.test(line)) continue;
+    // Skip transition lines
+    if (/^(CUT TO|FADE|DISSOLVE|SMASH CUT|MATCH CUT)/i.test(line)) continue;
+    meaningful.push(line);
+    if (meaningful.join(" ").length > 150) break;
+  }
+  const result = meaningful.join(" ").substring(0, 200);
+  return result || content.substring(0, 200);
+}
+
 // POST: Bulk import scenes from parsed script
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
@@ -47,7 +66,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       intExt: raw.intExt || "INT",
       dayNight: raw.dayNight || "DAY",
       pageCount: raw.pageCount || 1,
-      synopsis: raw.content ? raw.content.trim().substring(0, 200) : null,
+      synopsis: raw.content ? extractSynopsis(raw.content.trim()) : null,
       content: raw.content ? raw.content.trim() : null,
       order: i,
       status: "unscheduled",
