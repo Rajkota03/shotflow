@@ -16,10 +16,10 @@ interface OllamaResponse {
 }
 
 /**
- * Which AI provider is active: Ollama (self-hosted) is primary, Anthropic is fallback.
+ * Which AI provider is active: Haiku primary, Ollama fallback.
  */
-export function getActiveProvider(): "ollama" | "anthropic" {
-  return "ollama";
+export function getActiveProvider(): "anthropic" | "ollama" {
+  return ANTHROPIC_API_KEY ? "anthropic" : "ollama";
 }
 
 /**
@@ -96,18 +96,18 @@ async function ollamaGenerateLocal(prompt: string, system?: string): Promise<str
 
 /**
  * Send a prompt to the active AI provider.
- * Ollama (self-hosted, fast, free) is primary. Claude is fallback if Ollama fails.
+ * Haiku is primary (fast, cheap). Ollama (self-hosted, free) is fallback.
  */
 export async function ollamaGenerate(prompt: string, system?: string): Promise<string> {
-  try {
-    return await ollamaGenerateLocal(prompt, system);
-  } catch (ollamaErr) {
-    console.warn("Ollama failed, falling back to Anthropic:", ollamaErr);
-    if (ANTHROPIC_API_KEY) {
-      return anthropicGenerate(prompt, system);
+  if (ANTHROPIC_API_KEY) {
+    try {
+      return await anthropicGenerate(prompt, system);
+    } catch (err) {
+      console.warn("Anthropic failed, falling back to Ollama:", err);
+      return ollamaGenerateLocal(prompt, system);
     }
-    throw ollamaErr;
   }
+  return ollamaGenerateLocal(prompt, system);
 }
 
 /**
