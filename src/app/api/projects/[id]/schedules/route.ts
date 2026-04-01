@@ -40,17 +40,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!project || (project.userId && project.userId !== user.id)) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    const { name, startDate, endDate, blockedWeekdays = [0] } = await req.json();
-    // blockedWeekdays: array of day-of-week to block (0=Sunday, 6=Saturday)
+    const { name, numberOfDays, startDate, endDate, blockedWeekdays = [0] } = await req.json();
 
-    if (!startDate || !endDate) {
-        return NextResponse.json({ error: "startDate and endDate are required" }, { status: 400 });
+    // Mode 1: Number of days (no dates yet — user assigns calendar later)
+    // Mode 2: Date range (legacy — generates days from start/end)
+    const useNumberMode = numberOfDays && numberOfDays > 0;
+
+    if (!useNumberMode && (!startDate || !endDate)) {
+        return NextResponse.json({ error: "Either numberOfDays or startDate+endDate required" }, { status: 400 });
     }
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
 
-    if (end <= start) {
+    if (start && end && end <= start) {
         return NextResponse.json({ error: "endDate must be after startDate" }, { status: 400 });
     }
 
@@ -59,38 +62,47 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         data: {
             projectId: id,
             name: name || "Main Schedule",
-            startDate: start,
-            endDate: end,
+            startDate: start ?? undefined,
+            endDate: end ?? undefined,
         },
     });
 
-    // Generate shoot days and blocked dates
+    // Generate shoot days
     const blockedDatesData: { scheduleId: string; date: Date; reason: string }[] = [];
-    const shootDaysData: { projectId: string; scheduleId: string; dayNumber: number; date: Date }[] = [];
-    let dayNumber = 1;
+    const shootDaysData: { projectId: string; scheduleId: string; dayNumber: number; date?: Date }[] = [];
 
-    const current = new Date(start);
-    while (current <= end) {
-        const dayOfWeek = current.getDay(); // 0=Sun, 6=Sat
-
-        if (blockedWeekdays.includes(dayOfWeek)) {
-            // Blocked day
-            blockedDatesData.push({
-                scheduleId: schedule.id,
-                date: new Date(current),
-                reason: dayOfWeek === 0 ? "sunday" : "blocked",
-            });
-        } else {
-            // Shoot day
+    if (useNumberMode) {
+        // Create N days without dates
+        for (let i = 1; i <= numberOfDays; i++) {
             shootDaysData.push({
                 projectId: id,
                 scheduleId: schedule.id,
-                dayNumber: dayNumber++,
-                date: new Date(current),
+                dayNumber: i,
+                // no date assigned yet — user maps calendar later
             });
         }
-
-        current.setDate(current.getDate() + 1);
+    } else {
+        // Date-range mode: generate days from start to end, skipping blocked weekdays
+        let dayNumber = 1;
+        const current = new Date(start!);
+        while (current <= end!) {
+            const dayOfWeek = current.getDay();
+            if (blockedWeekdays.includes(dayOfWeek)) {
+                blockedDatesData.push({
+                    scheduleId: schedule.id,
+                    date: new Date(current),
+                    reason: dayOfWeek === 0 ? "sunday" : "blocked",
+                });
+            } else {
+                shootDaysData.push({
+                    projectId: id,
+                    scheduleId: schedule.id,
+                    dayNumber: dayNumber++,
+                    date: new Date(current),
+                });
+            }
+            current.setDate(current.getDate() + 1);
+        }
     }
 
     // Bulk create

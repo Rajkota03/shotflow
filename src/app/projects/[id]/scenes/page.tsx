@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useCallback, use } from "react";
+import React, { useState, useMemo, useCallback, useRef, useEffect, use } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Search,
@@ -27,7 +27,7 @@ interface Scene {
   status: string;
   shootDayId: string | null;
   shootDay?: { dayNumber: number };
-  castLinks?: { castMember: { name: string } }[];
+  castLinks?: { castMember: { id: string; characterName: string } }[];
 }
 
 type SortKey = "sceneNumber" | "pageCount" | "status" | "sceneName";
@@ -72,6 +72,69 @@ const STATUS_BADGE: Record<string, string> = {
   Scheduled: "sf-badge--blue",
   Boneyard: "sf-badge--muted",
 };
+
+/* ── Inline Edit Cell ──────────────────────────────────── */
+
+function InlineEditInput({
+  value,
+  onChange,
+  onCommit,
+  onCancel,
+  style,
+  selectOptions,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+  style?: React.CSSProperties;
+  selectOptions?: string[];
+}) {
+  const ref = useRef<HTMLInputElement | HTMLSelectElement>(null);
+
+  useEffect(() => {
+    ref.current?.focus();
+    if (ref.current instanceof HTMLInputElement) ref.current.select();
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") onCommit();
+    if (e.key === "Escape") onCancel();
+  };
+
+  if (selectOptions) {
+    return (
+      <select
+        ref={ref as React.RefObject<HTMLSelectElement>}
+        value={value}
+        onChange={(e) => { onChange(e.target.value); }}
+        onBlur={onCommit}
+        onKeyDown={handleKeyDown}
+        className="sf-inline-edit-select"
+        style={style}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {selectOptions.map((opt) => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
+    );
+  }
+
+  return (
+    <input
+      ref={ref as React.RefObject<HTMLInputElement>}
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={onCommit}
+      onKeyDown={handleKeyDown}
+      className="sf-inline-edit-input"
+      style={style}
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
+}
 
 /* ── Component ─────────────────────────────────────────── */
 
@@ -121,6 +184,40 @@ export default function SceneListPage({
     },
   });
 
+  // Inline editing
+  const [editingCell, setEditingCell] = useState<{ sceneId: string; field: string } | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const updateSceneMutation = useMutation({
+    mutationFn: async ({ sceneId, data }: { sceneId: string; data: Partial<Scene> }) => {
+      const res = await fetch(`/api/projects/${id}/scenes/${sceneId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to update scene");
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["scenes", id] }),
+  });
+
+  const startEdit = (sceneId: string, field: string, currentValue: string) => {
+    setEditingCell({ sceneId, field });
+    setEditValue(currentValue);
+  };
+
+  const commitEdit = () => {
+    if (!editingCell) return;
+    const { sceneId, field } = editingCell;
+    const trimmed = editValue.trim();
+    if (trimmed) {
+      updateSceneMutation.mutate({ sceneId, data: { [field]: trimmed } });
+    }
+    setEditingCell(null);
+  };
+
+  const cancelEdit = () => setEditingCell(null);
+
   // Sort toggle
   const handleSort = useCallback(
     (key: SortKey) => {
@@ -159,7 +256,7 @@ export default function SceneListPage({
           s.sceneName?.toLowerCase().includes(q) ||
           s.sceneNumber.toLowerCase().includes(q) ||
           s.castLinks?.some((c) =>
-            c.castMember.name.toLowerCase().includes(q),
+            c.castMember.characterName.toLowerCase().includes(q),
           ),
       );
     }
@@ -632,7 +729,7 @@ export default function SceneListPage({
               const warnings = tab === "scriptyard" ? getWarnings(scene) : [];
               const isSelected = selected.has(scene.id);
               const castNames =
-                scene.castLinks?.map((c) => c.castMember.name) ?? [];
+                scene.castLinks?.map((c) => c.castMember.characterName) ?? [];
               const castDisplay =
                 castNames.length <= 2
                   ? castNames.join(", ")
@@ -643,9 +740,10 @@ export default function SceneListPage({
                   <tr
                     className={isSelected ? "is-selected" : ""}
                     style={{ height: 48, cursor: "pointer" }}
-                    onClick={() =>
-                      (window.location.href = `/projects/${id}/breakdown?scene=${scene.id}`)
-                    }
+                    onClick={() => {
+                      if (editingCell) return;
+                      window.location.href = `/projects/${id}/breakdown?scene=${scene.id}`;
+                    }}
                   >
                     <td
                       style={{ paddingLeft: 16 }}
@@ -669,25 +767,61 @@ export default function SceneListPage({
                         fontSize: "var(--text-sm)",
                         color: "var(--text-secondary)",
                       }}
+                      onDoubleClick={(e) => { e.stopPropagation(); startEdit(scene.id, "sceneNumber", scene.sceneNumber); }}
                     >
-                      {scene.sceneNumber}
+                      {editingCell?.sceneId === scene.id && editingCell.field === "sceneNumber" ? (
+                        <InlineEditInput
+                          value={editValue}
+                          onChange={setEditValue}
+                          onCommit={commitEdit}
+                          onCancel={cancelEdit}
+                          style={{ width: 48, fontFamily: "var(--font-mono)" }}
+                        />
+                      ) : scene.sceneNumber}
                     </td>
 
                     {/* INT/EXT + DAY/NIGHT combined */}
-                    <td>
-                      {(scene.intExt || scene.dayNight) && (
-                        <span
-                          className={`sf-badge ${
-                            scene.dayNight === "NIGHT"
-                              ? "sf-badge--night"
-                              : scene.intExt === "EXT"
-                                ? "sf-badge--ext"
-                                : "sf-badge--int"
-                          }`}
-                          style={{ fontSize: 10 }}
-                        >
-                          {[scene.intExt, scene.dayNight].filter(Boolean).join("/")}
-                        </span>
+                    <td
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        startEdit(scene.id, "intExt", `${scene.intExt || "INT"}/${scene.dayNight || "DAY"}`);
+                      }}
+                    >
+                      {editingCell?.sceneId === scene.id && editingCell.field === "intExt" ? (
+                        <InlineEditInput
+                          value={editValue}
+                          onChange={setEditValue}
+                          onCommit={() => {
+                            if (!editingCell) return;
+                            const parts = editValue.split("/");
+                            const ie = parts[0]?.trim() || "INT";
+                            const dn = parts[1]?.trim() || "DAY";
+                            updateSceneMutation.mutate({
+                              sceneId: editingCell.sceneId,
+                              data: { intExt: ie, dayNight: dn },
+                            });
+                            setEditingCell(null);
+                          }}
+                          onCancel={cancelEdit}
+                          selectOptions={["INT/DAY", "INT/NIGHT", "EXT/DAY", "EXT/NIGHT"]}
+                          style={{ fontSize: 11 }}
+                        />
+                      ) : (
+                        (scene.intExt || scene.dayNight) && (
+                          <span
+                            className={`sf-badge ${
+                              scene.dayNight === "NIGHT"
+                                ? "sf-badge--night"
+                                : scene.intExt === "EXT"
+                                  ? "sf-badge--ext"
+                                  : "sf-badge--int"
+                            }`}
+                            style={{ fontSize: 10, cursor: "default" }}
+                            title="Double-click to edit"
+                          >
+                            {[scene.intExt, scene.dayNight].filter(Boolean).join("/")}
+                          </span>
+                        )
                       )}
                     </td>
 
@@ -697,22 +831,35 @@ export default function SceneListPage({
                         color: "var(--text-primary)",
                         maxWidth: 300,
                       }}
+                      onDoubleClick={(e) => { e.stopPropagation(); startEdit(scene.id, "sceneName", scene.sceneName || ""); }}
                     >
-                      <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {scene.sceneName || (
-                          <span style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>
-                            Unassigned
-                          </span>
-                        )}
-                      </div>
-                      {scene.synopsis && (
-                        <div style={{
-                          fontSize: 10, color: "var(--text-tertiary)", marginTop: 2,
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                          maxWidth: 280, lineHeight: 1.3,
-                        }}>
-                          {scene.synopsis}
-                        </div>
+                      {editingCell?.sceneId === scene.id && editingCell.field === "sceneName" ? (
+                        <InlineEditInput
+                          value={editValue}
+                          onChange={setEditValue}
+                          onCommit={commitEdit}
+                          onCancel={cancelEdit}
+                          style={{ width: "100%" }}
+                        />
+                      ) : (
+                        <>
+                          <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title="Double-click to edit">
+                            {scene.sceneName || (
+                              <span style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>
+                                Unassigned
+                              </span>
+                            )}
+                          </div>
+                          {scene.synopsis && (
+                            <div style={{
+                              fontSize: 10, color: "var(--text-tertiary)", marginTop: 2,
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                              maxWidth: 280, lineHeight: 1.3,
+                            }}>
+                              {scene.synopsis}
+                            </div>
+                          )}
+                        </>
                       )}
                     </td>
 
@@ -741,8 +888,31 @@ export default function SceneListPage({
                         textAlign: "right",
                         color: "var(--text-primary)",
                       }}
+                      onDoubleClick={(e) => { e.stopPropagation(); startEdit(scene.id, "pageCount", String(scene.pageCount)); }}
                     >
-                      {scene.pageCount > 0 ? scene.pageCount.toFixed(1) : "\u2014"}
+                      {editingCell?.sceneId === scene.id && editingCell.field === "pageCount" ? (
+                        <InlineEditInput
+                          value={editValue}
+                          onChange={setEditValue}
+                          onCommit={() => {
+                            if (!editingCell) return;
+                            const num = parseFloat(editValue);
+                            if (!isNaN(num) && num >= 0) {
+                              updateSceneMutation.mutate({
+                                sceneId: editingCell.sceneId,
+                                data: { pageCount: num },
+                              });
+                            }
+                            setEditingCell(null);
+                          }}
+                          onCancel={cancelEdit}
+                          style={{ width: 56, fontFamily: "var(--font-mono)", textAlign: "right" }}
+                        />
+                      ) : (
+                        <span title="Double-click to edit">
+                          {scene.pageCount > 0 ? scene.pageCount.toFixed(1) : "\u2014"}
+                        </span>
+                      )}
                     </td>
 
                     {/* Status badge */}

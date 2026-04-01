@@ -1,5 +1,5 @@
 "use client";
-import { use, useState } from "react";
+import { use, useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import { useBudgetStore } from "@/store/budget-store";
@@ -41,7 +41,9 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
   const qc = useQueryClient();
   const refreshBudget = useBudgetStore((s) => s.refreshBudget);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editFields, setEditFields] = useState<Record<string, { name: string; dayRate: string; roleType: string }>>({});
+  const [editFields, setEditFields] = useState<Record<string, { name: string; characterName: string; dayRate: string; roleType: string }>>({});
+  const [editingCharName, setEditingCharName] = useState<string | null>(null);
+  const charNameRef = useRef<HTMLInputElement>(null);
   const [availabilityId, setAvailabilityId] = useState<string | null>(null);
 
   const { data: project } = useQuery<Project>({
@@ -55,7 +57,7 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ castId, data }: { castId: string; data: { name?: string; dayRate?: number; roleType?: string } }) =>
+    mutationFn: ({ castId, data }: { castId: string; data: { name?: string; characterName?: string; dayRate?: number; roleType?: string } }) =>
       fetch(`/api/projects/${id}/cast/${castId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -133,6 +135,7 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
       ...prev,
       [member.id]: {
         name: member.name || "",
+        characterName: member.characterName || "",
         dayRate: String(member.dayRate || ""),
         roleType: member.roleType,
       },
@@ -146,10 +149,33 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
       castId,
       data: {
         name: fields.name,
+        characterName: fields.characterName,
         dayRate: Number(fields.dayRate) || 0,
         roleType: fields.roleType,
       },
     });
+  }
+
+  function startCharNameEdit(member: CastMember) {
+    setEditingCharName(member.id);
+    setEditFields((prev) => ({
+      ...prev,
+      [member.id]: {
+        ...prev[member.id],
+        name: member.name || "",
+        characterName: member.characterName || "",
+        dayRate: String(member.dayRate || ""),
+        roleType: member.roleType,
+      },
+    }));
+    setTimeout(() => charNameRef.current?.focus(), 0);
+  }
+
+  function saveCharName(castId: string) {
+    const fields = editFields[castId];
+    if (!fields?.characterName?.trim()) { setEditingCharName(null); return; }
+    updateMutation.mutate({ castId, data: { characterName: fields.characterName.trim() } });
+    setEditingCharName(null);
   }
 
   return (
@@ -229,9 +255,38 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
                       >
                         {/* Character + Actor */}
                         <div>
-                          <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-primary)" }}>
-                            {member.characterName || "Unknown"}
-                          </div>
+                          {editingCharName === member.id ? (
+                            <input
+                              ref={charNameRef}
+                              autoFocus
+                              value={editFields[member.id]?.characterName || ""}
+                              onChange={(e) =>
+                                setEditFields((prev) => ({
+                                  ...prev,
+                                  [member.id]: { ...prev[member.id], characterName: e.target.value },
+                                }))
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") saveCharName(member.id);
+                                if (e.key === "Escape") setEditingCharName(null);
+                              }}
+                              onBlur={() => saveCharName(member.id)}
+                              style={{
+                                fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-primary)",
+                                background: "var(--bg-surface-1)", border: "1px solid var(--blue-border)",
+                                borderRadius: 6, padding: "2px 8px", outline: "none", width: "100%", maxWidth: 200,
+                                boxShadow: "0 0 0 2px rgba(59, 130, 246, 0.2)",
+                              }}
+                            />
+                          ) : (
+                            <div
+                              style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-primary)", cursor: "default" }}
+                              onDoubleClick={() => startCharNameEdit(member)}
+                              title="Double-click to edit character name"
+                            >
+                              {member.characterName || "Unknown"}
+                            </div>
+                          )}
                           {isEditing ? (
                             <input
                               autoFocus

@@ -381,6 +381,7 @@ function DayColumn({
   colorId,
   onColorChange,
   onReview,
+  onUpdateDate,
   getConflicts,
 }: {
   day: ScheduleShootDay;
@@ -395,12 +396,14 @@ function DayColumn({
   colorId: string;
   onColorChange: (colorId: string) => void;
   onReview: () => void;
+  onUpdateDate: (date: string | null) => void;
   getConflicts: (scene: ScheduleScene, dayDate: string | null) => string[];
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: day.id });
   const [showCallPopover, setShowCallPopover] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const callTriggerRef = useRef<HTMLButtonElement>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
   const totalPages = getScenePages(scenes);
   const tone = getDayTone(totalPages);
   const isNight = day.dayType === "night_shoot";
@@ -439,7 +442,21 @@ function DayColumn({
         <button type="button" className="day-column__header" onClick={onSelect}>
           <div className="day-column__eyebrow">
             <span>DAY {day.dayNumber}</span>
-            <span>{date.stamp}</span>
+            <span
+              className="day-column__date-trigger"
+              onClick={(e) => { e.stopPropagation(); dateInputRef.current?.showPicker(); }}
+              title="Click to assign date"
+            >
+              {date.stamp}
+            </span>
+            <input
+              ref={dateInputRef}
+              type="date"
+              className="day-column__date-input"
+              value={day.date ? day.date.split("T")[0] : ""}
+              onChange={(e) => { e.stopPropagation(); onUpdateDate(e.target.value || null); }}
+              onClick={(e) => e.stopPropagation()}
+            />
           </div>
           <div className="day-column__weekday">
             {date.weekday}
@@ -770,10 +787,12 @@ function ScheduleSetupModal({
 }) {
   const { toast } = useToast();
   const [name, setName] = useState("Main Schedule");
+  const [mode, setMode] = useState<"days" | "dates">("days");
+  const [numberOfDays, setNumberOfDays] = useState("10");
   const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
   const [endDate, setEndDate] = useState("");
   const [selectedPreset, setSelectedPreset] = useState<string>(presets[0]?.id || "");
-  const [blockedWeekdays, setBlockedWeekdays] = useState<number[]>([0]); // Sunday blocked by default
+  const [blockedWeekdays, setBlockedWeekdays] = useState<number[]>([0]);
   const [creating, setCreating] = useState(false);
 
   const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -787,25 +806,27 @@ function ScheduleSetupModal({
   const preset = presets.find((p) => p.id === selectedPreset);
 
   const handleCreate = async () => {
-    if (!startDate || !endDate) {
+    if (mode === "days" && (!numberOfDays || Number(numberOfDays) < 1)) {
+      toast("Enter the number of shoot days", "warning");
+      return;
+    }
+    if (mode === "dates" && (!startDate || !endDate)) {
       toast("Please set both start and end dates", "warning");
       return;
     }
     setCreating(true);
     try {
+      const body = mode === "days"
+        ? { name, numberOfDays: Number(numberOfDays) }
+        : { name, startDate, endDate, blockedWeekdays };
+
       const res = await fetch(`/api/projects/${projectId}/schedules`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          startDate,
-          endDate,
-          blockedWeekdays,
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error("Failed");
 
-      // If a preset is selected, update all created shoot days with its call time
       if (preset) {
         const schedule = await res.json();
         const shootDays = schedule.shootDays || [];
@@ -834,7 +855,7 @@ function ScheduleSetupModal({
       <div className="ai-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
         <div className="ai-modal__eyebrow">New Schedule</div>
         <h3 style={{ fontSize: 22 }}>Schedule Setup</h3>
-        <p>Configure your shooting schedule before adding scenes to days.</p>
+        <p>Set the number of shoot days first. You can assign calendar dates later.</p>
 
         <div className="setup-modal__form">
           {/* Name */}
@@ -848,44 +869,70 @@ function ScheduleSetupModal({
             />
           </div>
 
-          {/* Dates */}
-          <div className="setup-modal__row">
-            <div className="setup-modal__field">
-              <label>Start Date</label>
-              <input
-                className="sf-date-input"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
-            <div className="setup-modal__field">
-              <label>End Date</label>
-              <input
-                className="sf-date-input"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
+          {/* Mode toggle */}
+          <div className="setup-modal__field">
+            <label>How do you want to set up days?</label>
+            <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+              <button
+                type="button"
+                className={cn("setup-modal__weekday", mode === "days" && "is-blocked")}
+                style={{ flex: 1, padding: "8px 12px", fontSize: 12 }}
+                onClick={() => setMode("days")}
+              >
+                Number of Days
+              </button>
+              <button
+                type="button"
+                className={cn("setup-modal__weekday", mode === "dates" && "is-blocked")}
+                style={{ flex: 1, padding: "8px 12px", fontSize: 12 }}
+                onClick={() => setMode("dates")}
+              >
+                Date Range
+              </button>
             </div>
           </div>
 
-          {/* Off Days */}
-          <div className="setup-modal__field">
-            <label>Off Days</label>
-            <div className="setup-modal__weekdays">
-              {WEEKDAYS.map((day, i) => (
-                <button
-                  key={day}
-                  type="button"
-                  className={cn("setup-modal__weekday", blockedWeekdays.includes(i) && "is-blocked")}
-                  onClick={() => toggleBlockedDay(i)}
-                >
-                  {day}
-                </button>
-              ))}
+          {mode === "days" ? (
+            <div className="setup-modal__field">
+              <label>Number of Shoot Days</label>
+              <input
+                className="sf-input"
+                type="number"
+                min={1}
+                max={100}
+                value={numberOfDays}
+                onChange={(e) => setNumberOfDays(e.target.value)}
+                placeholder="10"
+                style={{ maxWidth: 120 }}
+              />
+              <span style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4, display: "block" }}>
+                Days will be created without dates. Assign calendar dates from the schedule board.
+              </span>
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="setup-modal__row">
+                <div className="setup-modal__field">
+                  <label>Start Date</label>
+                  <input className="sf-date-input" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                </div>
+                <div className="setup-modal__field">
+                  <label>End Date</label>
+                  <input className="sf-date-input" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                </div>
+              </div>
+              <div className="setup-modal__field">
+                <label>Off Days</label>
+                <div className="setup-modal__weekdays">
+                  {WEEKDAYS.map((day, i) => (
+                    <button key={day} type="button" className={cn("setup-modal__weekday", blockedWeekdays.includes(i) && "is-blocked")} onClick={() => toggleBlockedDay(i)}>
+                      {day}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Call Sheet Preset */}
           <div className="setup-modal__field">
@@ -916,7 +963,7 @@ function ScheduleSetupModal({
             onClick={handleCreate}
             disabled={creating}
           >
-            {creating ? "Creating..." : "Create Schedule"}
+            {creating ? "Creating..." : `Create ${mode === "days" ? numberOfDays : ""} Shoot Days`}
           </button>
         </div>
       </div>
@@ -1155,6 +1202,19 @@ export default function SchedulePage({ params }: { params: Promise<{ id: string 
       if (newDay?.id) setSelectedDayId(newDay.id);
     },
     onError: () => toast("Unable to add shoot day", "error"),
+  });
+
+  const updateDayDateMutation = useMutation({
+    mutationFn: async ({ dayId, date }: { dayId: string; date: string | null }) => {
+      const res = await fetch(`/api/projects/${id}/shoot-days/${dayId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date }),
+      });
+      if (!res.ok) throw new Error("Failed to update date");
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["project", id] }); },
+    onError: () => toast("Failed to update date", "error"),
   });
 
   const updateDayTimeMutation = useMutation({
@@ -1495,6 +1555,7 @@ export default function SchedulePage({ params }: { params: Promise<{ id: string 
                       saveDayColors(next);
                     }}
                     onReview={() => setReviewDayId(day.id)}
+                    onUpdateDate={(date) => updateDayDateMutation.mutate({ dayId: day.id, date })}
                     getConflicts={getSceneConflicts}
                   />
                 ))}

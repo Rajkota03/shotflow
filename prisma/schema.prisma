@@ -277,8 +277,8 @@ model Schedule {
   id           String   @id @default(cuid())
   projectId    String
   name         String   @default("Main Schedule")
-  startDate    DateTime
-  endDate      DateTime
+  startDate    DateTime?
+  endDate      DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
