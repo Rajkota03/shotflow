@@ -689,20 +689,28 @@ export default function SceneListPage({
                       )}
                     </td>
 
-                    {/* Set / Location */}
+                    {/* Set / Location + Synopsis */}
                     <td
                       style={{
                         color: "var(--text-primary)",
                         maxWidth: 300,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
                       }}
                     >
-                      {scene.sceneName || (
-                        <span style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>
-                          Unassigned
-                        </span>
+                      <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {scene.sceneName || (
+                          <span style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>
+                            Unassigned
+                          </span>
+                        )}
+                      </div>
+                      {scene.synopsis && (
+                        <div style={{
+                          fontSize: 10, color: "var(--text-tertiary)", marginTop: 2,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          maxWidth: 280, lineHeight: 1.3,
+                        }}>
+                          {scene.synopsis}
+                        </div>
                       )}
                     </td>
 

@@ -141,15 +141,18 @@ function SceneStrip({
   scene,
   isDragging = false,
   onRemove,
+  conflicts,
 }: {
   scene: ScheduleScene;
   isDragging?: boolean;
   onRemove?: () => void;
+  conflicts?: string[];
 }) {
   const stripType = getStripType(scene);
+  const hasConflict = conflicts && conflicts.length > 0;
 
   return (
-    <div className={cn("scene-strip", `scene-strip--${stripType}`, isDragging && "is-dragging")}>
+    <div className={cn("scene-strip", `scene-strip--${stripType}`, isDragging && "is-dragging", hasConflict && "scene-strip--conflict")}>
       <div className="scene-strip__row">
         <span className="scene-strip__title">Scene {scene.sceneNumber}</span>
         <span className="scene-strip__pages">{scene.pageCount.toFixed(1)}</span>
@@ -169,6 +172,11 @@ function SceneStrip({
         <span>{scene.dayNight}</span>
         {scene.sceneName && <span>{scene.sceneName.slice(0, 16)}</span>}
       </div>
+      {hasConflict && (
+        <div className="scene-strip__conflict" title={conflicts.join(", ")}>
+          ⚠ {conflicts.join(", ")}
+        </div>
+      )}
     </div>
   );
 }
@@ -176,9 +184,11 @@ function SceneStrip({
 function SortableStrip({
   scene,
   onRemove,
+  conflicts,
 }: {
   scene: ScheduleScene;
   onRemove?: () => void;
+  conflicts?: string[];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: scene.id });
 
@@ -190,7 +200,7 @@ function SortableStrip({
       {...attributes}
       {...listeners}
     >
-      <SceneStrip scene={scene} isDragging={isDragging} onRemove={onRemove} />
+      <SceneStrip scene={scene} isDragging={isDragging} onRemove={onRemove} conflicts={conflicts} />
     </div>
   );
 }
@@ -370,6 +380,8 @@ function DayColumn({
   onSavePreset,
   colorId,
   onColorChange,
+  onReview,
+  getConflicts,
 }: {
   day: ScheduleShootDay;
   scenes: ScheduleScene[];
@@ -382,6 +394,8 @@ function DayColumn({
   onSavePreset: (preset: CallSheetPreset) => void;
   colorId: string;
   onColorChange: (colorId: string) => void;
+  onReview: () => void;
+  getConflicts: (scene: ScheduleScene, dayDate: string | null) => string[];
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: day.id });
   const [showCallPopover, setShowCallPopover] = useState(false);
@@ -454,6 +468,14 @@ function DayColumn({
           <span>{scenes.length} scenes</span>
           <span>{totalPages.toFixed(1)} pp</span>
           <span>{uniqueLocations} locs</span>
+          <button
+            type="button"
+            className="day-column__review-btn"
+            onClick={(e) => { e.stopPropagation(); onReview(); }}
+            title="Review day details"
+          >
+            📋
+          </button>
         </div>
       </div>
 
@@ -484,7 +506,7 @@ function DayColumn({
             </button>
           ) : (
             scenes.map((scene) => (
-              <SortableStrip key={scene.id} scene={scene} onRemove={() => onRemoveScene(scene.id)} />
+              <SortableStrip key={scene.id} scene={scene} onRemove={() => onRemoveScene(scene.id)} conflicts={getConflicts(scene, day.date)} />
             ))
           )}
         </div>
@@ -1058,6 +1080,7 @@ export default function SchedulePage({ params }: { params: Promise<{ id: string 
   const [showAIModal, setShowAIModal] = useState(false);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [showPresetsModal, setShowPresetsModal] = useState(false);
+  const [reviewDayId, setReviewDayId] = useState<string | null>(null);
   const [presets, setPresets] = useState<CallSheetPreset[]>(DEFAULT_PRESETS);
   const [viewMode, setViewMode] = useState<"board" | "stripboard">("board");
   const [dayColors, setDayColors] = useState<Record<string, string>>({});
@@ -1173,6 +1196,26 @@ export default function SchedulePage({ params }: { params: Promise<{ id: string 
   const selectedDay = days.find((d) => d.id === selectedDayId) ?? null;
   const selectedDayScenes = selectedDay ? (board[selectedDay.id] ?? []) : [];
   const activeScene = allScenes.find((s) => s.id === activeSceneId) ?? null;
+  const reviewDay = reviewDayId ? days.find((d) => d.id === reviewDayId) ?? null : null;
+  const reviewDayScenes = reviewDay ? (board[reviewDay.id] ?? []) : [];
+
+  // Cast availability conflict detection
+  const getSceneConflicts = useCallback((scene: ScheduleScene, dayDate: string | null): string[] => {
+    if (!dayDate) return [];
+    const dateStr = dayDate.split("T")[0]; // normalize to YYYY-MM-DD
+    const conflicts: string[] = [];
+    for (const link of scene.castLinks || []) {
+      const cm = link.castMember;
+      if (!cm?.availableDates) continue;
+      try {
+        const available: string[] = JSON.parse(cm.availableDates);
+        if (available.length > 0 && !available.includes(dateStr)) {
+          conflicts.push(`${cm.characterName || cm.name} unavailable`);
+        }
+      } catch { /* skip */ }
+    }
+    return conflicts;
+  }, []);
 
   function findContainer(sceneIdOrContainerId: string, b: ScheduleBoardState) {
     if (sceneIdOrContainerId in b) return sceneIdOrContainerId;
@@ -1451,6 +1494,8 @@ export default function SchedulePage({ params }: { params: Promise<{ id: string 
                       setDayColors(next);
                       saveDayColors(next);
                     }}
+                    onReview={() => setReviewDayId(day.id)}
+                    getConflicts={getSceneConflicts}
                   />
                 ))}
               </div>
@@ -1506,6 +1551,202 @@ export default function SchedulePage({ params }: { params: Promise<{ id: string 
           onClose={() => setShowPresetsModal(false)}
         />
       )}
+
+      {reviewDay && (
+        <DayReviewModal
+          day={reviewDay}
+          scenes={reviewDayScenes}
+          colorId={dayColors[reviewDay.id] || "amber"}
+          getConflicts={getSceneConflicts}
+          onClose={() => setReviewDayId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Day Review Modal ──────────────────────────────── */
+
+function DayReviewModal({
+  day,
+  scenes,
+  colorId,
+  getConflicts,
+  onClose,
+}: {
+  day: ScheduleShootDay;
+  scenes: ScheduleScene[];
+  colorId: string;
+  getConflicts: (scene: ScheduleScene, dayDate: string | null) => string[];
+  onClose: () => void;
+}) {
+  const date = formatBoardDate(day.date);
+  const totalPages = getScenePages(scenes);
+  const tone = getDayTone(totalPages);
+  const presetColor = getPresetColor(colorId);
+
+  // Collect all unique cast for this day
+  const dayCast = new Map<string, { name: string; character: string | null; conflicts: boolean }>();
+  for (const scene of scenes) {
+    const conflicts = getConflicts(scene, day.date);
+    for (const link of scene.castLinks || []) {
+      const cm = link.castMember;
+      if (cm && !dayCast.has(cm.name)) {
+        const hasConflict = conflicts.some((c) => c.includes(cm.characterName || cm.name));
+        dayCast.set(cm.name, { name: cm.name, character: cm.characterName || null, conflicts: hasConflict });
+      }
+    }
+  }
+
+  // Unique locations
+  const locations = [...new Set(scenes.map((s) => s.sceneName).filter(Boolean))];
+
+  // Total conflicts
+  const totalConflicts = scenes.reduce((sum, s) => sum + getConflicts(s, day.date).length, 0);
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border-default)", borderRadius: 16, padding: 0, width: 480, maxHeight: "80vh", overflow: "hidden", display: "flex", flexDirection: "column" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-tertiary)" }}>
+                DAY {day.dayNumber} · {date.stamp}
+              </div>
+              <h3 style={{ fontSize: 20, fontWeight: 600, color: "var(--text-primary)", marginTop: 4 }}>
+                {date.weekday}
+              </h3>
+            </div>
+            <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 18 }}>✕</button>
+          </div>
+
+          {/* Metrics row */}
+          <div style={{ display: "flex", gap: 16, marginTop: 12 }}>
+            <div style={{ padding: "6px 12px", borderRadius: 8, background: presetColor.value, border: `1px solid ${presetColor.border}`, fontSize: 11, color: presetColor.text }}>
+              🕐 {day.callTime || "06:00"} — {day.estimatedWrap || "18:00"}
+            </div>
+            <div style={{ padding: "6px 12px", borderRadius: 8, background: "var(--bg-surface-3)", fontSize: 11, color: "var(--text-secondary)" }}>
+              {scenes.length} scenes · {totalPages.toFixed(1)} pages
+            </div>
+            {totalConflicts > 0 && (
+              <div style={{ padding: "6px 12px", borderRadius: 8, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 11, color: "#ef4444" }}>
+                ⚠ {totalConflicts} conflict{totalConflicts !== 1 ? "s" : ""}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: 1, overflow: "auto", padding: "16px 24px" }}>
+          {/* Scenes */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-tertiary)", marginBottom: 8 }}>
+              Scenes ({scenes.length})
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {scenes.map((scene) => {
+                const conflicts = getConflicts(scene, day.date);
+                const stripType = getStripType(scene);
+                return (
+                  <div key={scene.id} style={{
+                    padding: "10px 12px", borderRadius: 8,
+                    background: conflicts.length > 0 ? "rgba(239,68,68,0.06)" : "var(--bg-surface-3)",
+                    border: `1px solid ${conflicts.length > 0 ? "rgba(239,68,68,0.2)" : "var(--border-subtle)"}`,
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>Sc {scene.sceneNumber}</span>
+                        <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>{scene.intExt} · {scene.dayNight}</span>
+                        <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>{scene.pageCount.toFixed(1)}pp</span>
+                      </div>
+                    </div>
+                    {scene.sceneName && (
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>{scene.sceneName}</div>
+                    )}
+                    {/* Cast in scene */}
+                    {scene.castLinks?.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                        {scene.castLinks.map((link, i) => {
+                          const isUnavailable = conflicts.some((c) => c.includes(link.castMember?.characterName || link.castMember?.name || ""));
+                          return (
+                            <span key={i} style={{
+                              fontSize: 10, padding: "2px 6px", borderRadius: 4,
+                              background: isUnavailable ? "rgba(239,68,68,0.15)" : "var(--bg-surface-1)",
+                              color: isUnavailable ? "#ef4444" : "var(--text-secondary)",
+                              border: isUnavailable ? "1px solid rgba(239,68,68,0.3)" : "none",
+                            }}>
+                              {link.castMember?.characterName || link.castMember?.name}
+                              {isUnavailable && " ⚠"}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {conflicts.length > 0 && (
+                      <div style={{ fontSize: 10, color: "#ef4444", marginTop: 4 }}>
+                        ⚠ {conflicts.join(", ")}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {scenes.length === 0 && (
+                <div style={{ padding: 16, textAlign: "center", color: "var(--text-tertiary)", fontSize: 12 }}>
+                  No scenes assigned to this day.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Locations */}
+          {locations.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-tertiary)", marginBottom: 8 }}>
+                Locations ({locations.length})
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {locations.map((loc) => (
+                  <span key={loc} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, background: "var(--bg-surface-3)", color: "var(--text-secondary)" }}>
+                    📍 {loc}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Cast */}
+          {dayCast.size > 0 && (
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-tertiary)", marginBottom: 8 }}>
+                Cast on Set ({dayCast.size})
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {Array.from(dayCast.values()).map((cm) => (
+                  <div key={cm.name} style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "6px 10px", borderRadius: 6,
+                    background: cm.conflicts ? "rgba(239,68,68,0.06)" : "var(--bg-surface-3)",
+                    border: cm.conflicts ? "1px solid rgba(239,68,68,0.2)" : "1px solid transparent",
+                  }}>
+                    <div>
+                      <span style={{ fontSize: 12, color: cm.conflicts ? "#ef4444" : "var(--text-primary)" }}>{cm.name}</span>
+                      {cm.character && <span style={{ fontSize: 10, color: "var(--text-tertiary)", marginLeft: 6 }}>as {cm.character}</span>}
+                    </div>
+                    {cm.conflicts && <span style={{ fontSize: 10, color: "#ef4444" }}>⚠ Unavailable</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

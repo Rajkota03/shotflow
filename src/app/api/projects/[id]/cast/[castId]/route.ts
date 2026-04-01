@@ -12,6 +12,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       roleType: body.roleType,
       dayRate: body.dayRate,
       travelRequired: body.travelRequired,
+      availableDates: body.availableDates !== undefined ? body.availableDates : undefined,
       notes: body.notes,
     },
   });

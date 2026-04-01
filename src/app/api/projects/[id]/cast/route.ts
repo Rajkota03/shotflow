@@ -24,6 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       roleType: body.roleType || "lead",
       dayRate: body.dayRate || 0,
       travelRequired: body.travelRequired || false,
+      availableDates: body.availableDates || null,
       notes: body.notes,
     },
   });

@@ -1194,6 +1194,20 @@ body {
   margin-top: 0;
 }
 
+.day-column__review-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0.4;
+  transition: opacity 0.15s;
+  padding: 0 2px;
+}
+
+.day-column__review-btn:hover {
+  opacity: 1;
+}
+
 /* Call Time Popover — floating card */
 .call-popover {
   width: 240px;
@@ -1534,6 +1548,20 @@ body {
   font-size: var(--text-xs);
   font-family: var(--font-mono);
   color: var(--text-secondary);
+}
+
+.scene-strip--conflict {
+  border-color: rgba(239, 68, 68, 0.4) !important;
+  background: rgba(239, 68, 68, 0.06) !important;
+}
+
+.scene-strip__conflict {
+  font-size: 9px;
+  color: #ef4444;
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .scene-strip__remove {

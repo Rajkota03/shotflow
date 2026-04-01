@@ -134,6 +134,7 @@ model CastMember {
   roleType         String   @default("lead") // lead/supporting/day_player/extra
   dayRate          Float    @default(0)
   travelRequired   Boolean  @default(false)
+  availableDates   String?  // JSON array of available date strings ["2026-04-01","2026-04-02",...]
   notes            String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt

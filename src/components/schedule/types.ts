@@ -8,7 +8,7 @@ export interface ScheduleScene {
   synopsis: string | null;
   status: string;
   shootDayId: string | null;
-  castLinks: { castMember: { name: string } }[];
+  castLinks: { castMember: { name: string; characterName?: string | null; availableDates?: string | null } }[];
 }
 
 export interface ScheduleShootDay {

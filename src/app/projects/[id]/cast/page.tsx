@@ -11,6 +11,7 @@ interface CastMember {
   roleType: string;
   dayRate: number;
   travelRequired: boolean;
+  availableDates: string | null; // JSON array of date strings
   notes: string | null;
   sceneLinks: { scene: { id: string; sceneNumber: string; sceneName: string } }[];
 }
@@ -41,6 +42,7 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
   const refreshBudget = useBudgetStore((s) => s.refreshBudget);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFields, setEditFields] = useState<Record<string, { name: string; dayRate: string; roleType: string }>>({});
+  const [availabilityId, setAvailabilityId] = useState<string | null>(null);
 
   const { data: project } = useQuery<Project>({
     queryKey: ["project", id],
@@ -64,6 +66,18 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
       qc.invalidateQueries({ queryKey: ["project", id] });
       refreshBudget(id);
       setEditingId(null);
+    },
+  });
+
+  const availabilityMutation = useMutation({
+    mutationFn: ({ castId, dates }: { castId: string; dates: string[] }) =>
+      fetch(`/api/projects/${id}/cast/${castId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ availableDates: JSON.stringify(dates) }),
+      }).then((r) => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cast", id] });
     },
   });
 
@@ -332,7 +346,7 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
                         </span>
 
                         {/* Actions */}
-                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                        <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", flexWrap: "wrap" }}>
                           {isEditing ? (
                             <>
                               <button
@@ -358,6 +372,19 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
                             </>
                           ) : (
                             <>
+                              <button
+                                onClick={() => setAvailabilityId(member.id)}
+                                title="Set availability dates"
+                                style={{
+                                  padding: "4px 8px", fontSize: 11,
+                                  background: member.availableDates ? "rgba(16,185,129,0.1)" : "transparent",
+                                  color: member.availableDates ? "#10b981" : "var(--text-tertiary)",
+                                  border: `1px solid ${member.availableDates ? "rgba(16,185,129,0.2)" : "var(--border-subtle)"}`,
+                                  borderRadius: 6, cursor: "pointer",
+                                }}
+                              >
+                                📅
+                              </button>
                               <button
                                 onClick={() => startEdit(member)}
                                 style={{
@@ -419,6 +446,171 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
           </div>
         </>
       )}
+
+      {/* Availability Calendar Modal */}
+      {availabilityId && (
+        <AvailabilityCalendar
+          member={cast.find((c) => c.id === availabilityId)!}
+          onSave={(dates) => {
+            availabilityMutation.mutate({ castId: availabilityId, dates });
+            setAvailabilityId(null);
+          }}
+          onClose={() => setAvailabilityId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Availability Calendar ─────────────────────────── */
+
+function AvailabilityCalendar({
+  member,
+  onSave,
+  onClose,
+}: {
+  member: CastMember;
+  onSave: (dates: string[]) => void;
+  onClose: () => void;
+}) {
+  const existing: string[] = member.availableDates ? JSON.parse(member.availableDates) : [];
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set(existing));
+  const [viewMonth, setViewMonth] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  });
+
+  const daysInMonth = new Date(viewMonth.year, viewMonth.month + 1, 0).getDate();
+  const firstDayOfWeek = new Date(viewMonth.year, viewMonth.month, 1).getDay();
+  const monthLabel = new Date(viewMonth.year, viewMonth.month).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+  const toggleDate = (dateStr: string) => {
+    setSelectedDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(dateStr)) next.delete(dateStr);
+      else next.add(dateStr);
+      return next;
+    });
+  };
+
+  const prevMonth = () => {
+    setViewMonth((v) => v.month === 0 ? { year: v.year - 1, month: 11 } : { ...v, month: v.month - 1 });
+  };
+
+  const nextMonth = () => {
+    setViewMonth((v) => v.month === 11 ? { year: v.year + 1, month: 0 } : { ...v, month: v.month + 1 });
+  };
+
+  // Select/deselect all days in current month
+  const selectAllMonth = () => {
+    const next = new Set(selectedDates);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const ds = `${viewMonth.year}-${String(viewMonth.month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      next.add(ds);
+    }
+    setSelectedDates(next);
+  };
+
+  const clearMonth = () => {
+    const next = new Set(selectedDates);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const ds = `${viewMonth.year}-${String(viewMonth.month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      next.delete(ds);
+    }
+    setSelectedDates(next);
+  };
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border-default)", borderRadius: 16, padding: 24, width: 380 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>
+              Availability: {member.characterName || member.name}
+            </h3>
+            <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
+              Click dates when this actor is <strong style={{ color: "#10b981" }}>available</strong>. Green = available.
+            </p>
+          </div>
+        </div>
+
+        {/* Month nav */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <button onClick={prevMonth} style={{ background: "transparent", border: "none", color: "var(--text-secondary)", cursor: "pointer", fontSize: 18, padding: "4px 8px" }}>‹</button>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{monthLabel}</span>
+          <button onClick={nextMonth} style={{ background: "transparent", border: "none", color: "var(--text-secondary)", cursor: "pointer", fontSize: 18, padding: "4px 8px" }}>›</button>
+        </div>
+
+        {/* Weekday headers */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 4 }}>
+          {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+            <div key={d} style={{ textAlign: "center", fontSize: 10, color: "var(--text-tertiary)", fontWeight: 600, padding: 4 }}>{d}</div>
+          ))}
+        </div>
+
+        {/* Days grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
+          {Array.from({ length: firstDayOfWeek }).map((_, i) => (
+            <div key={`blank-${i}`} />
+          ))}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const day = i + 1;
+            const dateStr = `${viewMonth.year}-${String(viewMonth.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+            const isSelected = selectedDates.has(dateStr);
+            const today = new Date().toISOString().split("T")[0];
+            const isToday = dateStr === today;
+            return (
+              <button
+                key={day}
+                onClick={() => toggleDate(dateStr)}
+                style={{
+                  width: "100%", aspectRatio: "1", display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: isToday ? 700 : 400, borderRadius: 8,
+                  border: isToday ? "1px solid var(--amber)" : "1px solid transparent",
+                  background: isSelected ? "rgba(16, 185, 129, 0.2)" : "transparent",
+                  color: isSelected ? "#10b981" : "var(--text-secondary)",
+                  cursor: "pointer", transition: "all 0.1s",
+                }}
+              >
+                {day}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Quick actions */}
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <button onClick={selectAllMonth} style={{ flex: 1, padding: "6px", fontSize: 11, background: "rgba(16,185,129,0.1)", color: "#10b981", border: "1px solid rgba(16,185,129,0.2)", borderRadius: 8, cursor: "pointer" }}>
+            Select All
+          </button>
+          <button onClick={clearMonth} style={{ flex: 1, padding: "6px", fontSize: 11, background: "transparent", color: "var(--text-tertiary)", border: "1px solid var(--border-subtle)", borderRadius: 8, cursor: "pointer" }}>
+            Clear Month
+          </button>
+        </div>
+
+        <div style={{ fontSize: 11, color: "var(--text-tertiary)", textAlign: "center", marginTop: 8 }}>
+          {selectedDates.size} days selected
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "8px 16px", fontSize: 12, background: "var(--bg-surface-3)", color: "var(--text-secondary)", border: "none", borderRadius: 8, cursor: "pointer" }}>
+            Cancel
+          </button>
+          <button
+            onClick={() => onSave(Array.from(selectedDates).sort())}
+            style={{ flex: 1, padding: "8px 16px", fontSize: 12, fontWeight: 600, background: "var(--amber)", color: "var(--bg-void)", border: "none", borderRadius: 8, cursor: "pointer" }}
+          >
+            Save Availability
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
