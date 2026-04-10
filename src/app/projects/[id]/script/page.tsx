@@ -732,37 +732,87 @@ export default function ScriptPage({
 function parseScriptText(text: string): ParsedScene[] {
   const scenes: ParsedScene[] = [];
 
-  // Scene number pattern: "1", "1A", "12B", "1-A", "A1" etc.
-  // Captures the number as-is from the script — never auto-generates.
-  // Also handles trailing scene numbers (common in shooting scripts): "1 INT. OFFICE - DAY 1"
-  const SCENE_NUM = /(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)/;
+  // Forgiving heading matcher — matches ANY line that starts with optional scene number
+  // followed by INT/EXT/I/E. Location and TOD are parsed separately from the tail.
+  // This catches headings without TOD, without dash separators, with extra trailing text, etc.
+  const TOD_WORDS = "DAY|NIGHT|DAWN|DUSK|EVENING|MORNING|CONTINUOUS|LATER|SAME TIME|SAME|MAGIC HOUR|AFTERNOON|MIDNIGHT|NOON|PRE-DAWN|SUNRISE|SUNSET";
+  const headingStart =
+    /^\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?\s*\.?\s*(INT\.?\/EXT\.?|I\/E|INT|EXT)\.?[\s:.-]+(.+?)\s*$/i;
 
-  // Standard Hollywood heading with scene numbers on left and/or right
-  // Location can contain dashes (e.g. "COFFEE SHOP - HALLWAY"), so we anchor on the TOD keyword
-  // Group 1: leading scene number (optional)
-  // Group 5: trailing scene number (optional) — used when leading is empty
-  // Note: In PDF text, scene numbers can be glued to DAY/NIGHT (e.g. "DAY16A 16A")
-  // so the trailing capture uses \s* (zero or more spaces) after the TOD keyword
-  const headingRegex =
-    /(?:^|\n)\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?\s*\.?\s*(INT|EXT|INT\/EXT|INT\.\/EXT\.|I\/E)\.?\s*(.+?)[-\u2013\u2014]\s*(DAY|NIGHT|DAWN|DUSK|EVENING|MORNING|CONTINUOUS|LATER|SAME TIME|MAGIC HOUR)\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?(?:\s+\d+[A-Za-z]*)?\s*$/gim;
+  function parseHeadingLine(line: string): {
+    sceneNumber: string | null;
+    heading: string;
+    intExt: "INT" | "EXT";
+    dayNight: string;
+  } | null {
+    const m = headingStart.exec(line);
+    if (!m) return null;
+
+    const leadNum = m[1] || null;
+    const ieRaw = m[2].toUpperCase().replace(/\./g, "");
+    const intExt: "INT" | "EXT" = ieRaw.includes("EXT") ? "EXT" : "INT";
+
+    let tail = m[3].trim();
+
+    // Strip trailing scene number (e.g. "OFFICE - DAY 16A" or "OFFICE - DAY 16A 16A")
+    let trailingNum: string | null = null;
+    const trailNumMatch = tail.match(/^(.*?)\s+(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)(?:\s+\d+[A-Za-z]*)?\s*$/);
+    if (trailNumMatch) {
+      // Only strip if there's something meaningful before the trailing number
+      if (trailNumMatch[1].trim().length > 0) {
+        tail = trailNumMatch[1].trim();
+        trailingNum = trailNumMatch[2];
+      }
+    }
+
+    // Look for TOD at the end of tail, separated by dash/comma/whitespace
+    let dayNight = "DAY"; // default when missing
+    const todRegex = new RegExp(`^(.+?)[\\s\\-\\u2013\\u2014,:]+(${TOD_WORDS})\\s*$`, "i");
+    const todMatch = tail.match(todRegex);
+    if (todMatch) {
+      tail = todMatch[1].trim();
+      dayNight = normalizeTOD(todMatch[2]);
+    } else {
+      // Maybe the TOD is glued to the location without separator (PDF artifacts): "OFFICEDAY"
+      const gluedTod = new RegExp(`^(.+?)(${TOD_WORDS})\\s*$`, "i");
+      const gm = tail.match(gluedTod);
+      if (gm && gm[1].trim().length > 2) {
+        tail = gm[1].trim();
+        dayNight = normalizeTOD(gm[2]);
+      }
+    }
+
+    // Strip trailing dashes or punctuation from the heading
+    tail = tail.replace(/[\s\-\u2013\u2014,:]+$/, "").trim();
+
+    return {
+      sceneNumber: leadNum || trailingNum,
+      heading: tail.replace(/\s+/g, " ") || "UNTITLED LOCATION",
+      intExt,
+      dayNight,
+    };
+  }
 
   const lines = text.split("\n");
   let currentScene: ParsedScene | null = null;
   let sceneNum = 0;
 
   for (const line of lines) {
-    headingRegex.lastIndex = 0;
-    const match = headingRegex.exec(line.trim());
-    if (match) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (currentScene) currentScene.content += "\n";
+      continue;
+    }
+
+    const parsed = parseHeadingLine(trimmed);
+    if (parsed) {
       if (currentScene) scenes.push(currentScene);
       sceneNum++;
-      const intExtRaw = match[2].toUpperCase().replace(/\./g, "");
-      // Use leading scene number, fall back to trailing, then auto-number
       currentScene = {
-        sceneNumber: match[1] || match[5] || String(sceneNum),
-        heading: match[3].trim().replace(/\s+/g, " "),
-        intExt: intExtRaw.includes("EXT") ? "EXT" : "INT",
-        dayNight: normalizeTOD(match[4]),
+        sceneNumber: parsed.sceneNumber || String(sceneNum),
+        heading: parsed.heading,
+        intExt: parsed.intExt,
+        dayNight: parsed.dayNight,
         pageCount: 0,
         content: "",
         characters: [],
