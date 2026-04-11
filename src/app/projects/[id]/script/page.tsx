@@ -860,8 +860,16 @@ function parseScriptText(text: string): ParsedScene[] {
   // Indian screenplay format: "Scene 1Location – ... Characters – ... Time: ..."
   // or "Scene 1\nLocation – ..." (with line breaks between fields)
   if (scenes.length === 0) {
-    // First, normalize: the docx often concatenates "Scene 1Location" without space
+    // First, normalize. Real-world Indian scripts have several recurring quirks:
+    //  1. "Locatoin-" typo for "Location-"
+    //  2. Merged headings like "Scene 52 & 52A" (share same Location/Characters/Time)
+    //  3. Docx concatenates "Scene 1Location" without a space
     const normalized = text
+      // Fix common typo so the Location detection below works
+      .replace(/Locatoin/gi, "Location")
+      // Strip ampersand-merged scene numbers: "Scene 52 & 52A" → "Scene 52"
+      // (secondary numbers share the same block — treat as one scene)
+      .replace(/(Scene\s*\d+[A-Z]?)(?:\s*&\s*\d+[A-Z]?)+/gi, "$1")
       .replace(/Scene\s*(\d+[A-Z]?)\s*Location/gi, "\nScene $1\nLocation")
       .replace(/Location\s*[-–—:]\s*/gi, "\nLocation: ")
       .replace(/Characters?\s*[-–—:]\s*/gi, "\nCharacters: ")
