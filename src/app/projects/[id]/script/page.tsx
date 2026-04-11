@@ -191,7 +191,11 @@ export default function ScriptPage({
           .replace(/&#39;/g, "'")
           .replace(/\n{3,}/g, "\n\n");
       } else if (ext === "fdx") {
-        // Final Draft XML — extract text content from paragraphs
+        // Final Draft XML — extract text content from paragraphs.
+        // For Scene Heading paragraphs, prepend the authoritative scene
+        // number from <SceneProperties Number="..."> so sub-scenes like
+        // "5A", "10B" survive into parseScriptText (which otherwise would
+        // renumber everything sequentially from the INT./EXT. line alone).
         const raw = await file.text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(raw, "text/xml");
@@ -199,7 +203,16 @@ export default function ScriptPage({
         const lines: string[] = [];
         paragraphs.forEach((p) => {
           const texts = Array.from(p.querySelectorAll("Text")).map((t) => t.textContent || "");
-          lines.push(texts.join(""));
+          const content = texts.join("");
+          if (p.getAttribute("Type") === "Scene Heading") {
+            const rawNum =
+              p.querySelector("SceneProperties")?.getAttribute("Number") || "";
+            // Handle merged numbers like "21 & 21A" or "76, 77" — keep the first.
+            const primaryNum = rawNum.match(/^\s*(\d+[A-Za-z]*)/)?.[1] || "";
+            lines.push(primaryNum ? `${primaryNum} ${content}` : content);
+          } else {
+            lines.push(content);
+          }
         });
         text = lines.join("\n");
       } else {
