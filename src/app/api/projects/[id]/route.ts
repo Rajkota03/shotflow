@@ -22,6 +22,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         include: {
           location: true,
           scenes: {
+            // Boneyard scenes are archived — exclude from schedule view.
+            where: { status: { not: "boneyard" } },
             orderBy: { order: "asc" },
             include: {
               castLinks: { include: { castMember: true } },
@@ -36,7 +38,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       crewMembers: { orderBy: { department: "asc" } },
       equipment: { orderBy: { name: "asc" } },
       scenes: {
-        where: { shootDayId: null },
+        where: { shootDayId: null, status: { not: "boneyard" } },
         orderBy: { order: "asc" },
         include: {
           castLinks: { include: { castMember: true } },

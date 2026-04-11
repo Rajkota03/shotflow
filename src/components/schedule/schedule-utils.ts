@@ -8,12 +8,16 @@ import type {
 } from "@/components/schedule/types";
 
 export function buildScheduleBoard(project: ScheduleProject): ScheduleBoardState {
+  // Exclude boneyard scenes from the schedule entirely — they're archived and
+  // should not appear in the unscheduled pool or the shoot-day columns.
+  const isActive = (scene: ScheduleScene) => scene.status !== "boneyard";
+
   const board: ScheduleBoardState = {
-    unscheduled: [...(project.scenes ?? [])],
+    unscheduled: (project.scenes ?? []).filter(isActive),
   };
 
   for (const day of (project.shootDays ?? [])) {
-    board[day.id] = [...day.scenes];
+    board[day.id] = day.scenes.filter(isActive);
   }
 
   return board;
