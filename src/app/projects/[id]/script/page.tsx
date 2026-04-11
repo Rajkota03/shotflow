@@ -736,8 +736,10 @@ function parseScriptText(text: string): ParsedScene[] {
   // followed by INT/EXT/I/E. Location and TOD are parsed separately from the tail.
   // This catches headings without TOD, without dash separators, with extra trailing text, etc.
   const TOD_WORDS = "DAY|NIGHT|DAWN|DUSK|EVENING|MORNING|CONTINUOUS|LATER|SAME TIME|SAME|MAGIC HOUR|AFTERNOON|MIDNIGHT|NOON|PRE-DAWN|SUNRISE|SUNSET";
+  // Case-sensitive: screenplays always use uppercase INT/EXT. Lowercase would
+  // match things like "int n=10;" in dialogue or code snippets.
   const headingStart =
-    /^\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?\s*\.?\s*(INT\.?\/EXT\.?|I\/E|INT|EXT)\.?[\s:.-]+(.+?)\s*$/i;
+    /^\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?\s*\.?\s*(INT\.\/EXT\.|INT\/EXT|I\/E|INT\.?|EXT\.?)[\s:.-]+(.+?)\s*$/;
 
   function parseHeadingLine(line: string): {
     sceneNumber: string | null;
@@ -826,7 +828,7 @@ function parseScriptText(text: string): ParsedScene[] {
   // If standard regex found nothing, try a looser pattern for PDF text
   if (scenes.length === 0) {
     const looseRegex =
-      /(?:^|\n)\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?\s*\.?\s*(INT|EXT|INT\/EXT)\.?\s+(.+?)[-\u2013\u2014\s]\s*(DAY|NIGHT|DAWN|DUSK)\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?\s*$/gim;
+      /(?:^|\n)\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?\s*\.?\s*(INT|EXT|INT\/EXT)\.?\s+(.+?)[-\u2013\u2014\s]\s*(DAY|NIGHT|DAWN|DUSK)\s*(\d+[A-Za-z]*(?:[.-]\d+)?[A-Za-z]?)?\s*$/gm;
     let looseMatch;
     let looseNum = 0;
     let lastIdx = 0;
