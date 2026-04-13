@@ -426,7 +426,7 @@ export default function SceneListPage({
           <div style={{ position: "relative" }}>
             <button
               className="sf-btn sf-btn--secondary sf-btn--sm"
-              onClick={() => setSortOpen((o) => !o)}
+              onClick={() => { setSortOpen((o) => !o); setFilterOpen(false); }}
               title="Sort"
             >
               <ArrowUpDown size={14} />
@@ -487,7 +487,7 @@ export default function SceneListPage({
           <div style={{ position: "relative" }}>
             <button
               className="sf-btn sf-btn--secondary sf-btn--sm"
-              onClick={() => setFilterOpen((o) => !o)}
+              onClick={() => { setFilterOpen((o) => !o); setSortOpen(false); }}
               title="Filter"
               style={
                 activeFilters > 0

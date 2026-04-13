@@ -212,8 +212,15 @@ export default function ScriptPage({
           // would appear on a real formatted page.
           if (type === "Scene Heading") {
             lines.push("", ""); // double-space before slug line
+            // Final Draft stores the scene number in different places across
+            // versions/exports: <Paragraph Number="5A"> on the parent (newer),
+            // or <SceneProperties Number="5A"> (older). Try parent first.
+            const sp = p.querySelector("SceneProperties");
             const rawNum =
-              p.querySelector("SceneProperties")?.getAttribute("Number") || "";
+              p.getAttribute("Number") ||
+              sp?.getAttribute("Number") ||
+              sp?.getAttribute("Title") ||
+              "";
             const primaryNum = rawNum.match(/^\s*(\d+[A-Za-z]*)/)?.[1] || "";
             lines.push(primaryNum ? `${primaryNum} ${content}` : content);
             lines.push(""); // blank after slug line
