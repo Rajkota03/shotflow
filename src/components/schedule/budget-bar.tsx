@@ -73,9 +73,10 @@ interface BudgetBarProps {
   days: ScheduleShootDay[];
   board: ScheduleBoardState;
   project: ScheduleProject;
+  onCellClick?: (dayId: string) => void;
 }
 
-export function BudgetBar({ days, board, project }: BudgetBarProps) {
+export function BudgetBar({ days, board, project, onCellClick }: BudgetBarProps) {
   const [prefs, setPrefs] = useState<Prefs>(() => defaultPrefs());
   const cellsRef = useRef<HTMLDivElement | null>(null);
 
@@ -289,10 +290,22 @@ export function BudgetBar({ days, board, project }: BudgetBarProps) {
           const b = dayBreakdown(day);
           const total = dayTotal(day);
           const enabledList = CATEGORIES.filter((c) => prefs.enabled[c.key] && b[c.key] > 0);
+          const isEmpty = total === 0;
+          const title = isEmpty
+            ? "No costs entered — click to open Day Review and add location/travel/lodging/catering"
+            : enabledList.map((c) => `${c.label}: ${fmt(b[c.key], symbol)}`).join(" · ");
           return (
-            <div key={day.id} className="budget-bar__cell" title={enabledList.map((c) => `${c.label}: ${fmt(b[c.key], symbol)}`).join(" · ")}>
+            <button
+              key={day.id}
+              type="button"
+              className={`budget-bar__cell ${isEmpty ? "budget-bar__cell--empty" : ""}`}
+              title={title}
+              onClick={() => onCellClick?.(day.id)}
+            >
               <div className="budget-bar__cell-day">D{day.dayNumber}</div>
-              <div className="budget-bar__cell-total">{fmt(total, symbol)}</div>
+              <div className="budget-bar__cell-total">
+                {isEmpty ? <span className="budget-bar__cell-hint">Add costs</span> : fmt(total, symbol)}
+              </div>
               <div className="budget-bar__cell-stack">
                 {enabledList.slice(0, 4).map((c) => (
                   <div
@@ -305,7 +318,7 @@ export function BudgetBar({ days, board, project }: BudgetBarProps) {
                   />
                 ))}
               </div>
-            </div>
+            </button>
           );
         })}
       </div>

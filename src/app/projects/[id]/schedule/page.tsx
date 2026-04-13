@@ -1588,7 +1588,7 @@ export default function SchedulePage({ params }: { params: Promise<{ id: string 
             </div>
 
             {days.length > 0 && project && (
-              <BudgetBar days={days} board={board} project={project} />
+              <BudgetBar days={days} board={board} project={project} onCellClick={(dayId) => setReviewDayId(dayId)} />
             )}
           </div>
 
