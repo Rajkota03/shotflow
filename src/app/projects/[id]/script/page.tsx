@@ -201,18 +201,49 @@ export default function ScriptPage({
         const doc = parser.parseFromString(raw, "text/xml");
         const paragraphs = doc.querySelectorAll("Paragraph");
         const lines: string[] = [];
+        let prevType = "";
         paragraphs.forEach((p) => {
+          const type = p.getAttribute("Type") || "";
           const texts = Array.from(p.querySelectorAll("Text")).map((t) => t.textContent || "");
           const content = texts.join("");
-          if (p.getAttribute("Type") === "Scene Heading") {
+
+          // Add screenplay-standard blank lines between elements so the
+          // page estimator (chars/lines → pages) counts whitespace that
+          // would appear on a real formatted page.
+          if (type === "Scene Heading") {
+            lines.push("", ""); // double-space before slug line
             const rawNum =
               p.querySelector("SceneProperties")?.getAttribute("Number") || "";
-            // Handle merged numbers like "21 & 21A" or "76, 77" — keep the first.
             const primaryNum = rawNum.match(/^\s*(\d+[A-Za-z]*)/)?.[1] || "";
             lines.push(primaryNum ? `${primaryNum} ${content}` : content);
+            lines.push(""); // blank after slug line
+          } else if (type === "Character") {
+            lines.push(""); // blank before character cue
+            lines.push(content);
+          } else if (type === "Dialogue" || type === "Parenthetical") {
+            // Dialogue wraps at ~35 chars in real scripts; pad so line count
+            // reflects actual printed lines instead of single long lines.
+            if (content.length > 35) {
+              for (let i = 0; i < content.length; i += 35) {
+                lines.push(content.slice(i, i + 35));
+              }
+            } else {
+              lines.push(content);
+            }
+          } else if (type === "Action") {
+            if (prevType !== "Action") lines.push(""); // blank before action block
+            // Action wraps at ~60 chars
+            if (content.length > 60) {
+              for (let i = 0; i < content.length; i += 60) {
+                lines.push(content.slice(i, i + 60));
+              }
+            } else {
+              lines.push(content);
+            }
           } else {
             lines.push(content);
           }
+          prevType = type;
         });
         text = lines.join("\n");
       } else {
@@ -964,7 +995,9 @@ function parseScriptText(text: string): ParsedScene[] {
 
   for (const scene of scenes) {
     const contentLen = scene.content.trim().length;
-    const lineCount = scene.content.split("\n").filter((l) => l.trim()).length;
+    // Count ALL lines (including blanks) — a real screenplay page is 56 lines
+    // including the blank lines used for element spacing.
+    const lineCount = scene.content.split("\n").length;
     const byChars = Math.max(0.125, Math.round((contentLen / 3000) * 8) / 8);
     const byLines = Math.max(0.125, Math.round((lineCount / 56) * 8) / 8);
     scene.pageCount = Math.max(byChars, byLines);
