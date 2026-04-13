@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// pdfjs-dist v5 legacy build still references DOMMatrix for transform math.
+// Node.js / Vercel serverless doesn't provide it, so polyfill a minimal version.
+if (typeof globalThis.DOMMatrix === "undefined") {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).DOMMatrix = class DOMMatrix {
+    a: number; b: number; c: number; d: number; e: number; f: number;
+    constructor(init?: string | number[]) {
+      const v = Array.isArray(init) ? init : [1, 0, 0, 1, 0, 0];
+      [this.a, this.b, this.c, this.d, this.e, this.f] = v;
+    }
+  };
+}
+
 /**
  * POST /api/extract-pdf
  * Accepts a PDF file upload (multipart/form-data) and returns extracted text.
@@ -27,7 +40,7 @@ export async function POST(req: NextRequest) {
     // Point worker to the actual file — works on Vercel because pdfjs-dist is in node_modules
     const workerPath = path.join(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs");
     pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath;
-    const pdf = await pdfjsLib.getDocument({ data }).promise;
+    const pdf = await pdfjsLib.getDocument({ data, useSystemFonts: true }).promise;
     let fullText = "";
 
     for (let i = 1; i <= pdf.numPages; i++) {
