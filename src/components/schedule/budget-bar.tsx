@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type {
   ScheduleBoardState,
@@ -77,10 +77,42 @@ interface BudgetBarProps {
 
 export function BudgetBar({ days, board, project }: BudgetBarProps) {
   const [prefs, setPrefs] = useState<Prefs>(() => defaultPrefs());
+  const cellsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setPrefs(loadPrefs());
   }, []);
+
+  // Sync horizontal scroll with the schedule grid above
+  useEffect(() => {
+    const cells = cellsRef.current;
+    if (!cells) return;
+    const grid = document.querySelector<HTMLDivElement>(".schedule-grid");
+    if (!grid) return;
+
+    let lock = false;
+    const onGridScroll = () => {
+      if (lock) return;
+      lock = true;
+      cells.scrollLeft = grid.scrollLeft;
+      requestAnimationFrame(() => { lock = false; });
+    };
+    const onCellsScroll = () => {
+      if (lock) return;
+      lock = true;
+      grid.scrollLeft = cells.scrollLeft;
+      requestAnimationFrame(() => { lock = false; });
+    };
+
+    grid.addEventListener("scroll", onGridScroll, { passive: true });
+    cells.addEventListener("scroll", onCellsScroll, { passive: true });
+    // Align initially
+    cells.scrollLeft = grid.scrollLeft;
+    return () => {
+      grid.removeEventListener("scroll", onGridScroll);
+      cells.removeEventListener("scroll", onCellsScroll);
+    };
+  }, [days.length, prefs.collapsed]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -252,7 +284,7 @@ export function BudgetBar({ days, board, project }: BudgetBarProps) {
       </div>
 
       {/* Per-day cells — aligned to day columns */}
-      <div className="budget-bar__cells">
+      <div className="budget-bar__cells" ref={cellsRef}>
         {days.map((day) => {
           const b = dayBreakdown(day);
           const total = dayTotal(day);
