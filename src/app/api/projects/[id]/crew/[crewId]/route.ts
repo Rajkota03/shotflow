@@ -13,18 +13,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   const body = await req.json();
-  const crew = await prisma.crewMember.update({
-    where: { id: crewId },
-    data: {
-      name: body.name,
-      department: body.department,
-      role: body.role,
-      dayRate: body.dayRate,
-      overtimeRate: body.overtimeRate,
-      contractedDays: body.contractedDays,
-      notes: body.notes,
-    },
-  });
+  const data: Record<string, unknown> = {};
+  if (body.name !== undefined) data.name = body.name;
+  if (body.department !== undefined) data.department = body.department;
+  if (body.role !== undefined) data.role = body.role;
+  if (body.paymentMode !== undefined) data.paymentMode = body.paymentMode === "package" ? "package" : "per_day";
+  if (body.dayRate !== undefined) data.dayRate = body.dayRate;
+  if (body.packageFee !== undefined) data.packageFee = body.packageFee;
+  if (body.overtimeRate !== undefined) data.overtimeRate = body.overtimeRate;
+  if (body.contractedDays !== undefined) data.contractedDays = body.contractedDays;
+  if (body.notes !== undefined) data.notes = body.notes;
+  const crew = await prisma.crewMember.update({ where: { id: crewId }, data });
   return NextResponse.json(crew);
 }
 

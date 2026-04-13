@@ -9,7 +9,9 @@ interface CastMember {
   name: string;
   characterName: string | null;
   roleType: string;
+  paymentMode: "per_day" | "package";
   dayRate: number;
+  packageFee: number;
   travelRequired: boolean;
   availableDates: string | null; // JSON array of date strings
   notes: string | null;
@@ -41,7 +43,7 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
   const qc = useQueryClient();
   const refreshBudget = useBudgetStore((s) => s.refreshBudget);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editFields, setEditFields] = useState<Record<string, { name: string; characterName: string; dayRate: string; roleType: string }>>({});
+  const [editFields, setEditFields] = useState<Record<string, { name: string; characterName: string; dayRate: string; roleType: string; paymentMode: "per_day" | "package"; packageFee: string }>>({});
   const [editingCharName, setEditingCharName] = useState<string | null>(null);
   const charNameRef = useRef<HTMLInputElement>(null);
   const [availabilityId, setAvailabilityId] = useState<string | null>(null);
@@ -57,7 +59,7 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ castId, data }: { castId: string; data: { name?: string; characterName?: string; dayRate?: number; roleType?: string } }) =>
+    mutationFn: ({ castId, data }: { castId: string; data: { name?: string; characterName?: string; dayRate?: number; packageFee?: number; paymentMode?: "per_day" | "package"; roleType?: string } }) =>
       fetch(`/api/projects/${id}/cast/${castId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -137,6 +139,8 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
         name: member.name || "",
         characterName: member.characterName || "",
         dayRate: String(member.dayRate || ""),
+        packageFee: String(member.packageFee || ""),
+        paymentMode: member.paymentMode || "per_day",
         roleType: member.roleType,
       },
     }));
@@ -150,7 +154,9 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
       data: {
         name: fields.name,
         characterName: fields.characterName,
+        paymentMode: fields.paymentMode,
         dayRate: Number(fields.dayRate) || 0,
+        packageFee: Number(fields.packageFee) || 0,
         roleType: fields.roleType,
       },
     });
@@ -165,6 +171,8 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
         name: member.name || "",
         characterName: member.characterName || "",
         dayRate: String(member.dayRate || ""),
+        packageFee: String(member.packageFee || ""),
+        paymentMode: member.paymentMode || "per_day",
         roleType: member.roleType,
       },
     }));
@@ -353,23 +361,46 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
                           )}
                         </div>
 
-                        {/* Day Rate */}
+                        {/* Day Rate / Package Fee */}
                         {isEditing ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                            <span style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)" }}>{symbol}</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            <div style={{ display: "flex", gap: 2 }}>
+                              <button
+                                type="button"
+                                onClick={() => setEditFields((prev) => ({ ...prev, [member.id]: { ...prev[member.id], paymentMode: "per_day" } }))}
+                                style={{
+                                  flex: 1, padding: "2px 4px", fontSize: 9, borderRadius: 4, cursor: "pointer",
+                                  background: fields?.paymentMode === "per_day" ? "var(--amber-subtle)" : "transparent",
+                                  color: fields?.paymentMode === "per_day" ? "var(--amber)" : "var(--text-tertiary)",
+                                  border: `1px solid ${fields?.paymentMode === "per_day" ? "var(--amber)" : "var(--border-subtle)"}`,
+                                }}
+                              >Day</button>
+                              <button
+                                type="button"
+                                onClick={() => setEditFields((prev) => ({ ...prev, [member.id]: { ...prev[member.id], paymentMode: "package" } }))}
+                                style={{
+                                  flex: 1, padding: "2px 4px", fontSize: 9, borderRadius: 4, cursor: "pointer",
+                                  background: fields?.paymentMode === "package" ? "var(--amber-subtle)" : "transparent",
+                                  color: fields?.paymentMode === "package" ? "var(--amber)" : "var(--text-tertiary)",
+                                  border: `1px solid ${fields?.paymentMode === "package" ? "var(--amber)" : "var(--border-subtle)"}`,
+                                }}
+                              >Pkg</button>
+                            </div>
                             <input
                               type="number"
                               placeholder="0"
-                              value={fields?.dayRate || ""}
+                              value={fields?.paymentMode === "package" ? (fields?.packageFee || "") : (fields?.dayRate || "")}
                               onChange={(e) =>
                                 setEditFields((prev) => ({
                                   ...prev,
-                                  [member.id]: { ...prev[member.id], dayRate: e.target.value },
+                                  [member.id]: fields?.paymentMode === "package"
+                                    ? { ...prev[member.id], packageFee: e.target.value }
+                                    : { ...prev[member.id], dayRate: e.target.value },
                                 }))
                               }
                               onKeyDown={(e) => e.key === "Enter" && saveEdit(member.id)}
                               style={{
-                                width: 70,
+                                width: "100%",
                                 background: "var(--bg-surface-1)", border: "1px solid var(--border-strong)",
                                 borderRadius: 6, padding: "4px 6px",
                                 fontSize: "var(--text-xs)", color: "var(--text-primary)",
@@ -378,16 +409,21 @@ export default function CastPage({ params }: { params: Promise<{ id: string }> }
                             />
                           </div>
                         ) : (
-                          <span
-                            style={{
-                              fontSize: "var(--text-sm)", fontFamily: "var(--font-mono)",
-                              color: member.dayRate > 0 ? "var(--text-primary)" : "var(--text-tertiary)",
-                              cursor: "pointer",
-                            }}
-                            onClick={() => startEdit(member)}
-                          >
-                            {member.dayRate > 0 ? formatCurrency(member.dayRate, currency) : `${symbol}—`}
-                          </span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 1, cursor: "pointer" }} onClick={() => startEdit(member)}>
+                            <span
+                              style={{
+                                fontSize: "var(--text-sm)", fontFamily: "var(--font-mono)",
+                                color: (member.paymentMode === "package" ? member.packageFee : member.dayRate) > 0 ? "var(--text-primary)" : "var(--text-tertiary)",
+                              }}
+                            >
+                              {(member.paymentMode === "package" ? member.packageFee : member.dayRate) > 0
+                                ? formatCurrency(member.paymentMode === "package" ? member.packageFee : member.dayRate, currency)
+                                : `${symbol}—`}
+                            </span>
+                            <span style={{ fontSize: 9, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                              {member.paymentMode === "package" ? "Package" : "Per day"}
+                            </span>
+                          </div>
                         )}
 
                         {/* Scenes count */}

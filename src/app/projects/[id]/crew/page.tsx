@@ -6,7 +6,8 @@ import { useBudgetStore } from "@/store/budget-store";
 
 interface CrewMember {
   id: string; name: string; department: string; role: string;
-  dayRate: number; overtimeRate: number; contractedDays: number; notes: string | null;
+  paymentMode: "per_day" | "package";
+  dayRate: number; packageFee: number; overtimeRate: number; contractedDays: number; notes: string | null;
 }
 interface Project { id: string; currency: string; }
 
@@ -36,7 +37,7 @@ export default function CrewPage({ params }: { params: Promise<{ id: string }> }
   const [editId, setEditId] = useState<string | null>(null);
   const [filterDept, setFilterDept] = useState<string>("all");
   const [form, setForm] = useState({
-    name: "", department: "production", role: "", dayRate: "", overtimeRate: "", contractedDays: "", notes: "",
+    name: "", department: "production", role: "", paymentMode: "per_day", dayRate: "", packageFee: "", overtimeRate: "", contractedDays: "", notes: "",
   });
 
   const { data: project } = useQuery<Project>({ queryKey: ["project", id], queryFn: () => fetch(`/api/projects/${id}`).then(r => r.json()) });
@@ -49,7 +50,9 @@ export default function CrewPage({ params }: { params: Promise<{ id: string }> }
     mutationFn: (data: typeof form) => {
       const body = {
         ...data,
+        paymentMode: data.paymentMode === "package" ? "package" : "per_day",
         dayRate: Number(data.dayRate) || 0,
+        packageFee: Number(data.packageFee) || 0,
         overtimeRate: Number(data.overtimeRate) || 0,
         contractedDays: Number(data.contractedDays) || 0,
       };
@@ -61,7 +64,7 @@ export default function CrewPage({ params }: { params: Promise<{ id: string }> }
       qc.invalidateQueries({ queryKey: ["project", id] });
       refreshBudget(id);
       setShowAdd(false); setEditId(null);
-      setForm({ name: "", department: "production", role: "", dayRate: "", overtimeRate: "", contractedDays: "", notes: "" });
+      setForm({ name: "", department: "production", role: "", paymentMode: "per_day", dayRate: "", packageFee: "", overtimeRate: "", contractedDays: "", notes: "" });
     },
   });
 
@@ -73,7 +76,9 @@ export default function CrewPage({ params }: { params: Promise<{ id: string }> }
   const startEdit = (member: CrewMember) => {
     setForm({
       name: member.name, department: member.department, role: member.role,
-      dayRate: String(member.dayRate), overtimeRate: String(member.overtimeRate),
+      paymentMode: member.paymentMode || "per_day",
+      dayRate: String(member.dayRate), packageFee: String(member.packageFee || 0),
+      overtimeRate: String(member.overtimeRate),
       contractedDays: String(member.contractedDays), notes: member.notes || "",
     });
     setEditId(member.id); setShowAdd(true);
@@ -194,23 +199,61 @@ export default function CrewPage({ params }: { params: Promise<{ id: string }> }
                   {DEPARTMENTS.map(d => <option key={d} value={d} className="capitalize">{d}</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>Day Rate ({currency === "INR" ? "₹" : "$"})</label>
-                  <input type="number" className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ background: "var(--bg-void)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
-                    placeholder="15000" value={form.dayRate} onChange={e => setForm(f => ({ ...f, dayRate: e.target.value }))} />
+              <div>
+                <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>Payment Mode</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, paymentMode: "per_day" }))}
+                    className="flex-1 py-2 text-xs rounded-lg"
+                    style={form.paymentMode === "per_day"
+                      ? { background: "var(--amber-subtle)", color: "var(--amber)", border: "1px solid var(--amber)" }
+                      : { background: "var(--bg-void)", color: "var(--text-secondary)", border: "1px solid var(--border-default)" }}
+                  >
+                    Per-day rate
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, paymentMode: "package" }))}
+                    className="flex-1 py-2 text-xs rounded-lg"
+                    style={form.paymentMode === "package"
+                      ? { background: "var(--amber-subtle)", color: "var(--amber)", border: "1px solid var(--amber)" }
+                      : { background: "var(--bg-void)", color: "var(--text-secondary)", border: "1px solid var(--border-default)" }}
+                  >
+                    Package fee
+                  </button>
                 </div>
-                <div>
-                  <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>OT Rate</label>
-                  <input type="number" className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ background: "var(--bg-void)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
-                    placeholder="2000" value={form.overtimeRate} onChange={e => setForm(f => ({ ...f, overtimeRate: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>Contracted Days</label>
-                  <input type="number" className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ background: "var(--bg-void)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
-                    placeholder="30" value={form.contractedDays} onChange={e => setForm(f => ({ ...f, contractedDays: e.target.value }))} />
-                </div>
+                <p className="text-[10px] mt-1" style={{ color: "var(--text-tertiary)" }}>
+                  {form.paymentMode === "package"
+                    ? "Lump-sum project fee. Counted as fixed cost — not in per-day budget bar."
+                    : "Daily rate — counted on every shoot day in the budget bar."}
+                </p>
               </div>
+              {form.paymentMode === "per_day" ? (
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>Day Rate ({currency === "INR" ? "₹" : "$"})</label>
+                    <input type="number" className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ background: "var(--bg-void)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
+                      placeholder="15000" value={form.dayRate} onChange={e => setForm(f => ({ ...f, dayRate: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>OT Rate</label>
+                    <input type="number" className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ background: "var(--bg-void)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
+                      placeholder="2000" value={form.overtimeRate} onChange={e => setForm(f => ({ ...f, overtimeRate: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>Contracted Days</label>
+                    <input type="number" className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ background: "var(--bg-void)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
+                      placeholder="30" value={form.contractedDays} onChange={e => setForm(f => ({ ...f, contractedDays: e.target.value }))} />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>Package Fee ({currency === "INR" ? "₹" : "$"})</label>
+                  <input type="number" className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ background: "var(--bg-void)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
+                    placeholder="500000" value={form.packageFee} onChange={e => setForm(f => ({ ...f, packageFee: e.target.value }))} />
+                </div>
+              )}
               <div>
                 <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>Notes</label>
                 <textarea className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none" style={{ background: "var(--bg-void)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}

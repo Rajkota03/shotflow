@@ -157,12 +157,42 @@ export default function SceneListPage({
   const [filterIE, setFilterIE] = useState<"all" | "INT" | "EXT">("all");
   const [filterDN, setFilterDN] = useState<"all" | "DAY" | "NIGHT">("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [schedulePickerOpen, setSchedulePickerOpen] = useState(false);
 
   // Data
   const { data: scenes = [], isLoading } = useQuery<Scene[]>({
     queryKey: ["scenes", id],
     queryFn: () =>
       fetch(`/api/projects/${id}/scenes`).then((r) => r.json()),
+  });
+
+  // Shoot days (for bulk-assign picker)
+  interface ShootDayLite { id: string; dayNumber: number; date: string | null; location: { name: string } | null }
+  const { data: shootDays = [] } = useQuery<ShootDayLite[]>({
+    queryKey: ["shoot-days", id],
+    queryFn: () => fetch(`/api/projects/${id}/shoot-days`).then((r) => r.json()),
+  });
+
+  // Bulk assign scenes to shoot day
+  const assignToDayMutation = useMutation({
+    mutationFn: async ({ sceneIds, shootDayId }: { sceneIds: string[]; shootDayId: string | null }) => {
+      await Promise.all(
+        sceneIds.map((sceneId) =>
+          fetch(`/api/projects/${id}/scenes/${sceneId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ shootDayId }),
+          })
+        )
+      );
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["scenes", id] });
+      qc.invalidateQueries({ queryKey: ["shoot-days", id] });
+      qc.invalidateQueries({ queryKey: ["project", id] });
+      setSelected(new Set());
+      setSchedulePickerOpen(false);
+    },
   });
 
   // Boneyard mutation
@@ -1006,9 +1036,117 @@ export default function SceneListPage({
               <button className="sf-btn sf-btn--secondary sf-btn--sm">
                 Assign Unit
               </button>
-              <button className="sf-btn sf-btn--secondary sf-btn--sm">
-                Schedule
-              </button>
+              <div style={{ position: "relative" }}>
+                <button
+                  className="sf-btn sf-btn--secondary sf-btn--sm"
+                  onClick={() => setSchedulePickerOpen((o) => !o)}
+                  disabled={assignToDayMutation.isPending}
+                >
+                  Schedule
+                </button>
+                {schedulePickerOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: "calc(100% + 6px)",
+                      left: 0,
+                      minWidth: 220,
+                      maxHeight: 300,
+                      overflowY: "auto",
+                      background: "var(--bg-surface-2)",
+                      border: "1px solid var(--border-default)",
+                      borderRadius: 8,
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                      zIndex: 50,
+                      padding: 4,
+                    }}
+                    onMouseLeave={() => setSchedulePickerOpen(false)}
+                  >
+                    <div
+                      style={{
+                        fontSize: "var(--text-xs)",
+                        color: "var(--text-muted)",
+                        padding: "6px 10px",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                      }}
+                    >
+                      Assign {selected.size} scene{selected.size > 1 ? "s" : ""} to…
+                    </div>
+                    {shootDays.length === 0 ? (
+                      <div style={{ padding: "8px 10px", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
+                        No shoot days. Create one in Schedule.
+                      </div>
+                    ) : (
+                      shootDays.map((d) => {
+                        const dateStr = d.date ? new Date(d.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "TBD";
+                        return (
+                          <button
+                            key={d.id}
+                            type="button"
+                            style={{
+                              display: "flex",
+                              width: "100%",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 12,
+                              padding: "8px 10px",
+                              background: "transparent",
+                              border: "none",
+                              borderRadius: 6,
+                              color: "var(--text-primary)",
+                              fontSize: "var(--text-sm)",
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-surface-3)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                            onClick={() => {
+                              const ids = Array.from(selected);
+                              assignToDayMutation.mutate(
+                                { sceneIds: ids, shootDayId: d.id },
+                                { onSuccess: () => toast(`${ids.length} scene${ids.length > 1 ? "s" : ""} assigned to Day ${d.dayNumber}`, "success") }
+                              );
+                            }}
+                          >
+                            <span style={{ fontWeight: 600 }}>Day {d.dayNumber}</span>
+                            <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
+                              {dateStr}{d.location?.name ? ` · ${d.location.name.slice(0, 14)}` : ""}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                    <div style={{ height: 1, background: "var(--border-default)", margin: "4px 0" }} />
+                    <button
+                      type="button"
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        padding: "8px 10px",
+                        background: "transparent",
+                        border: "none",
+                        borderRadius: 6,
+                        color: "var(--text-muted)",
+                        fontSize: "var(--text-sm)",
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-surface-3)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      onClick={() => {
+                        const ids = Array.from(selected);
+                        assignToDayMutation.mutate(
+                          { sceneIds: ids, shootDayId: null },
+                          { onSuccess: () => toast(`${ids.length} scene${ids.length > 1 ? "s" : ""} unscheduled`, "success") }
+                        );
+                      }}
+                    >
+                      Unschedule
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <div style={{ flex: 1 }} />
 

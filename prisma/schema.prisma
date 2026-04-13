@@ -83,6 +83,9 @@ model ShootDay {
   dayType             String   @default("full") // full/half/company_move
   isTravelDay         Boolean  @default(false)
   weatherContingency  Boolean  @default(false)
+  travelCost          Float    @default(0)
+  lodgingCost         Float    @default(0)
+  cateringCost        Float    @default(0)
   notes               String?
   order               Int      @default(0)
   createdAt           DateTime @default(now())
@@ -132,7 +135,9 @@ model CastMember {
   name             String
   characterName    String?
   roleType         String   @default("lead") // lead/supporting/day_player/extra
+  paymentMode      String   @default("per_day") // per_day | package
   dayRate          Float    @default(0)
+  packageFee       Float    @default(0)
   travelRequired   Boolean  @default(false)
   availableDates   String?  // JSON array of available date strings ["2026-04-01","2026-04-02",...]
   notes            String?
@@ -186,7 +191,9 @@ model CrewMember {
   name          String
   department    String   @default("production")
   role          String
+  paymentMode   String   @default("per_day") // per_day | package
   dayRate       Float    @default(0)
+  packageFee    Float    @default(0)
   overtimeRate  Float    @default(0)
   contractedDays Int     @default(0)
   notes         String?

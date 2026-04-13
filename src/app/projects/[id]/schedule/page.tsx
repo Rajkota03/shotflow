@@ -45,6 +45,7 @@ import {
 import type { ScheduleBoardState, ScheduleProject, ScheduleScene, ScheduleShootDay } from "@/components/schedule/types";
 import { cn } from "@/lib/utils";
 import { Stripboard } from "@/components/schedule/stripboard";
+import { BudgetBar } from "@/components/schedule/budget-bar";
 import "@/components/schedule/stripboard.css";
 
 /* ── Call Sheet Presets (localStorage) ────────────── */
@@ -408,8 +409,14 @@ function DayColumn({
   const tone = getDayTone(totalPages);
   const isNight = day.dayType === "night_shoot";
   const date = formatBoardDate(day.date);
-  const dominantLocation = scenes[0]?.sceneName || "No scenes yet";
-  const uniqueLocations = new Set(scenes.map((s) => s.sceneName).filter(Boolean)).size;
+  const locationCounts = new Map<string, number>();
+  for (const s of scenes) {
+    if (s.sceneName) locationCounts.set(s.sceneName, (locationCounts.get(s.sceneName) || 0) + 1);
+  }
+  const dominantLocation = scenes.length === 0
+    ? "No scenes yet"
+    : [...locationCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || scenes[0].sceneName;
+  const uniqueLocations = locationCounts.size;
   const callTime = day.callTime || "06:00";
   const wrapTime = day.estimatedWrap || "18:00";
 
@@ -1232,6 +1239,22 @@ export default function SchedulePage({ params }: { params: Promise<{ id: string 
     onSuccess: () => qc.invalidateQueries({ queryKey: ["project", id] }),
   });
 
+  const updateDayCostsMutation = useMutation({
+    mutationFn: async ({ dayId, travelCost, lodgingCost, cateringCost }: { dayId: string; travelCost?: number; lodgingCost?: number; cateringCost?: number }) => {
+      const body: Record<string, number> = {};
+      if (travelCost !== undefined) body.travelCost = travelCost;
+      if (lodgingCost !== undefined) body.lodgingCost = lodgingCost;
+      if (cateringCost !== undefined) body.cateringCost = cateringCost;
+      const res = await fetch(`/api/projects/${id}/shoot-days/${dayId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("Failed to update costs");
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["project", id] }),
+  });
+
   const deleteDayMutation = useMutation({
     mutationFn: async (dayId: string) => {
       const res = await fetch(`/api/projects/${id}/shoot-days/${dayId}`, { method: "DELETE" });
@@ -1505,61 +1528,67 @@ export default function SchedulePage({ params }: { params: Promise<{ id: string 
         onDragEnd={handleDragEnd}
       >
         <div className="schedule-board">
-          <div className="schedule-grid">
-            {days.length === 0 ? (
-              <div className="schedule-empty">
-                <div className="schedule-empty__title">No shoot days yet</div>
-                <p className="schedule-empty__text">Set up your schedule to start assigning scenes to shoot days.</p>
-                <button
-                  className="sf-btn sf-btn--primary"
-                  onClick={() => setShowSetupModal(true)}
-                >
-                  <Settings2 size={16} />
-                  Setup Schedule
-                </button>
-              </div>
-            ) : (
-              <div className="schedule-grid__inner">
-                {days.map((day) => (
-                  <DayColumn
-                    key={day.id}
-                    day={day}
-                    scenes={board[day.id] ?? []}
-                    selected={selectedDayId === day.id}
-                    onSelect={() => setSelectedDayId(day.id)}
-                    onRemoveScene={handleRemoveScene}
-                    onDeleteDay={() => {
-                      if (confirm(`Delete Day ${day.dayNumber}? Scenes will be unscheduled.`)) {
-                        deleteDayMutation.mutate(day.id);
-                      }
-                    }}
-                    onUpdateCallTime={(callTime, wrapTime, colorId) => {
-                      updateDayTimeMutation.mutate({ dayId: day.id, callTime, wrapTime });
-                      if (colorId) {
+          <div className="schedule-board__main">
+            <div className="schedule-grid">
+              {days.length === 0 ? (
+                <div className="schedule-empty">
+                  <div className="schedule-empty__title">No shoot days yet</div>
+                  <p className="schedule-empty__text">Set up your schedule to start assigning scenes to shoot days.</p>
+                  <button
+                    className="sf-btn sf-btn--primary"
+                    onClick={() => setShowSetupModal(true)}
+                  >
+                    <Settings2 size={16} />
+                    Setup Schedule
+                  </button>
+                </div>
+              ) : (
+                <div className="schedule-grid__inner">
+                  {days.map((day) => (
+                    <DayColumn
+                      key={day.id}
+                      day={day}
+                      scenes={board[day.id] ?? []}
+                      selected={selectedDayId === day.id}
+                      onSelect={() => setSelectedDayId(day.id)}
+                      onRemoveScene={handleRemoveScene}
+                      onDeleteDay={() => {
+                        if (confirm(`Delete Day ${day.dayNumber}? Scenes will be unscheduled.`)) {
+                          deleteDayMutation.mutate(day.id);
+                        }
+                      }}
+                      onUpdateCallTime={(callTime, wrapTime, colorId) => {
+                        updateDayTimeMutation.mutate({ dayId: day.id, callTime, wrapTime });
+                        if (colorId) {
+                          const next = { ...dayColors, [day.id]: colorId };
+                          setDayColors(next);
+                          saveDayColors(next);
+                        }
+                      }}
+                      presets={presets}
+                      onSavePreset={(preset) => {
+                        const next = [...presets, preset];
+                        setPresets(next);
+                        savePresets(next);
+                        toast(`Preset "${preset.name}" saved`, "success");
+                      }}
+                      colorId={dayColors[day.id] || "amber"}
+                      onColorChange={(colorId) => {
                         const next = { ...dayColors, [day.id]: colorId };
                         setDayColors(next);
                         saveDayColors(next);
-                      }
-                    }}
-                    presets={presets}
-                    onSavePreset={(preset) => {
-                      const next = [...presets, preset];
-                      setPresets(next);
-                      savePresets(next);
-                      toast(`Preset "${preset.name}" saved`, "success");
-                    }}
-                    colorId={dayColors[day.id] || "amber"}
-                    onColorChange={(colorId) => {
-                      const next = { ...dayColors, [day.id]: colorId };
-                      setDayColors(next);
-                      saveDayColors(next);
-                    }}
-                    onReview={() => setReviewDayId(day.id)}
-                    onUpdateDate={(date) => updateDayDateMutation.mutate({ dayId: day.id, date })}
-                    getConflicts={getSceneConflicts}
-                  />
-                ))}
-              </div>
+                      }}
+                      onReview={() => setReviewDayId(day.id)}
+                      onUpdateDate={(date) => updateDayDateMutation.mutate({ dayId: day.id, date })}
+                      getConflicts={getSceneConflicts}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {days.length > 0 && project && (
+              <BudgetBar days={days} board={board} project={project} />
             )}
           </div>
 
@@ -1618,8 +1647,10 @@ export default function SchedulePage({ params }: { params: Promise<{ id: string 
           day={reviewDay}
           scenes={reviewDayScenes}
           colorId={dayColors[reviewDay.id] || "amber"}
+          currency={project?.currency || "INR"}
           getConflicts={getSceneConflicts}
           onClose={() => setReviewDayId(null)}
+          onUpdateCosts={(costs) => updateDayCostsMutation.mutate({ dayId: reviewDay.id, ...costs })}
         />
       )}
     </div>
@@ -1632,15 +1663,32 @@ function DayReviewModal({
   day,
   scenes,
   colorId,
+  currency,
   getConflicts,
   onClose,
+  onUpdateCosts,
 }: {
   day: ScheduleShootDay;
   scenes: ScheduleScene[];
   colorId: string;
+  currency: string;
   getConflicts: (scene: ScheduleScene, dayDate: string | null) => string[];
   onClose: () => void;
+  onUpdateCosts: (costs: { travelCost?: number; lodgingCost?: number; cateringCost?: number }) => void;
 }) {
+  const symbol = currency === "INR" ? "₹" : "$";
+  const [travelCost, setTravelCost] = useState(String(day.travelCost ?? 0));
+  const [lodgingCost, setLodgingCost] = useState(String(day.lodgingCost ?? 0));
+  const [cateringCost, setCateringCost] = useState(String(day.cateringCost ?? 0));
+
+  const commitCosts = () => {
+    onUpdateCosts({
+      travelCost: Number(travelCost) || 0,
+      lodgingCost: Number(lodgingCost) || 0,
+      cateringCost: Number(cateringCost) || 0,
+    });
+  };
+
   const date = formatBoardDate(day.date);
   const totalPages = getScenePages(scenes);
   const tone = getDayTone(totalPages);
@@ -1784,7 +1832,7 @@ function DayReviewModal({
 
           {/* Cast */}
           {dayCast.size > 0 && (
-            <div>
+            <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-tertiary)", marginBottom: 8 }}>
                 Cast on Set ({dayCast.size})
               </div>
@@ -1806,6 +1854,43 @@ function DayReviewModal({
               </div>
             </div>
           )}
+
+          {/* Day-of variable costs */}
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-tertiary)", marginBottom: 8 }}>
+              Day-of Costs ({symbol})
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              {[
+                { key: "travel", label: "Travel", val: travelCost, set: setTravelCost, placeholder: "Vans, fuel" },
+                { key: "lodging", label: "Lodging", val: lodgingCost, set: setLodgingCost, placeholder: "Per night" },
+                { key: "catering", label: "Catering", val: cateringCost, set: setCateringCost, placeholder: "Crew meals" },
+              ].map((f) => (
+                <div key={f.key}>
+                  <label style={{ fontSize: 9, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 4 }}>
+                    {f.label}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={f.val}
+                    onChange={(e) => f.set(e.target.value)}
+                    onBlur={commitCosts}
+                    placeholder={f.placeholder}
+                    style={{
+                      width: "100%", padding: "6px 8px", fontSize: 12,
+                      background: "var(--bg-surface-3)", color: "var(--text-primary)",
+                      border: "1px solid var(--border-subtle)", borderRadius: 6,
+                      fontFamily: "var(--font-mono)", outline: "none",
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 6 }}>
+              These add to this day&apos;s bar in the schedule budget. Saved on blur.
+            </p>
+          </div>
         </div>
       </div>
     </div>

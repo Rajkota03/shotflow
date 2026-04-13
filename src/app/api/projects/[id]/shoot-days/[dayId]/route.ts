@@ -43,19 +43,23 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const prev = await prisma.shootDay.findUnique({ where: { id: dayId } });
 
+  const updateData: Record<string, unknown> = {};
+  if (body.date !== undefined) updateData.date = body.date ? new Date(body.date) : null;
+  if (body.callTime !== undefined) updateData.callTime = body.callTime;
+  if (body.estimatedWrap !== undefined) updateData.estimatedWrap = body.estimatedWrap;
+  if (body.dayType !== undefined) updateData.dayType = body.dayType;
+  if (body.locationId !== undefined) updateData.locationId = body.locationId;
+  if (body.isTravelDay !== undefined) updateData.isTravelDay = body.isTravelDay;
+  if (body.weatherContingency !== undefined) updateData.weatherContingency = body.weatherContingency;
+  if (body.travelCost !== undefined) updateData.travelCost = Number(body.travelCost) || 0;
+  if (body.lodgingCost !== undefined) updateData.lodgingCost = Number(body.lodgingCost) || 0;
+  if (body.cateringCost !== undefined) updateData.cateringCost = Number(body.cateringCost) || 0;
+  if (body.notes !== undefined) updateData.notes = body.notes;
+  if (body.order !== undefined) updateData.order = body.order;
+
   const day = await prisma.shootDay.update({
     where: { id: dayId },
-    data: {
-      date: body.date ? new Date(body.date) : undefined,
-      callTime: body.callTime,
-      estimatedWrap: body.estimatedWrap,
-      dayType: body.dayType,
-      locationId: body.locationId !== undefined ? body.locationId : undefined,
-      isTravelDay: body.isTravelDay,
-      weatherContingency: body.weatherContingency,
-      notes: body.notes,
-      order: body.order !== undefined ? body.order : undefined,
-    },
+    data: updateData,
     include: {
       location: true,
       scenes: {

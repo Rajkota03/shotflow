@@ -19,6 +19,14 @@ export function ScheduleDayColumn({ day, scenes, selected, onSelect }: ScheduleD
   const { setNodeRef, isOver } = useDroppable({ id: day.id });
   const totalPages = getScenePages(scenes);
 
+  const locationCounts = new Map<string, number>();
+  for (const s of scenes) {
+    if (s.sceneName) locationCounts.set(s.sceneName, (locationCounts.get(s.sceneName) || 0) + 1);
+  }
+  const dominantLocation = scenes.length === 0
+    ? (day.location?.name || "Floating")
+    : [...locationCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || (day.location?.name || "Floating");
+
   return (
     <section
       ref={setNodeRef}
@@ -46,7 +54,7 @@ export function ScheduleDayColumn({ day, scenes, selected, onSelect }: ScheduleD
         </span>
         <span>
           <MapPin size={12} />
-          {day.location?.name || "Floating"}
+          {dominantLocation}
         </span>
       </div>
 
