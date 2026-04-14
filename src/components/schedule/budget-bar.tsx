@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type {
   ScheduleBoardState,
@@ -112,39 +113,56 @@ interface BudgetBarProps {
   onCellClick?: (dayId: string) => void;
 }
 
+interface RemoteCategory {
+  id: string;
+  key: string;
+  label: string;
+  icon: string | null;
+  collapsed: boolean;
+  order: number;
+  items: Array<{
+    id: string;
+    name: string;
+    rate: number;
+    quantity: number;
+    rateType: RateType;
+    subcategory: string | null;
+    order: number;
+  }>;
+}
+
 export function BudgetBar({ days, board, project, onCellClick }: BudgetBarProps) {
   const [prefs, setPrefs] = useState<Prefs>(() => defaultPrefs());
-  const [budget, setBudget] = useState<BudgetCategory[] | null>(null);
   const cellsRef = useRef<HTMLDivElement | null>(null);
 
-  // Load prefs + budget from localStorage (client only)
   useEffect(() => {
     setPrefs(loadPrefs());
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const read = () => {
-      try {
-        const raw = window.localStorage.getItem(`shotflow-budget-${project.id}`);
-        setBudget(raw ? (JSON.parse(raw) as BudgetCategory[]) : null);
-      } catch {
-        setBudget(null);
-      }
-    };
-    read();
-    // Refresh when user returns to the tab (e.g., after editing Budget page)
-    const onFocus = () => read();
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === `shotflow-budget-${project.id}`) read();
-    };
-    window.addEventListener("focus", onFocus);
-    window.addEventListener("storage", onStorage);
-    return () => {
-      window.removeEventListener("focus", onFocus);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, [project.id]);
+  // Fetch budget plan from API (shared across browsers/devices).
+  const { data: remoteCategories } = useQuery<RemoteCategory[]>({
+    queryKey: ["budget-plan", project.id],
+    queryFn: () => fetch(`/api/projects/${project.id}/budget-plan`).then((r) => r.json()),
+    staleTime: 10_000,
+    refetchOnWindowFocus: true,
+  });
+
+  const budget: BudgetCategory[] | null = useMemo(() => {
+    if (!remoteCategories) return null;
+    if (remoteCategories.length === 0) return [];
+    return remoteCategories.map((c) => ({
+      id: c.key,
+      label: c.label,
+      items: c.items.map((it) => ({
+        id: it.id,
+        name: it.name,
+        rate: it.rate,
+        quantity: it.quantity,
+        rateType: it.rateType,
+        ...(it.subcategory ? { subcategory: it.subcategory } : {}),
+      })),
+    }));
+  }, [remoteCategories]);
 
   // Sync horizontal scroll with schedule grid
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 import "./budget.css";
-import React, { useState, useEffect, use, useMemo, useCallback } from "react";
+import React, { useState, useEffect, use, useMemo, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/components/ui/toast";
 import { formatCurrency, amountToWords } from "@/lib/utils";
@@ -237,9 +237,73 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
     },
   });
 
+  // Load budget plan: API first, fall back to localStorage, with one-time
+  // migration if API is empty and localStorage has data.
   useEffect(() => {
-    const saved = loadBudget(id);
-    if (saved) setCategories(saved);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/projects/${id}/budget-plan`);
+        if (!res.ok) throw new Error("fetch failed");
+        const remote = (await res.json()) as Array<{
+          id: string; key: string; label: string; icon: string | null;
+          collapsed: boolean; order: number;
+          items: Array<{ id: string; name: string; rate: number; quantity: number; rateType: RateType; subcategory: string | null; order: number }>;
+        }>;
+        if (cancelled) return;
+
+        if (remote.length > 0) {
+          const hydrated: BudgetCategory[] = remote.map((c) => ({
+            id: c.key,
+            label: c.label,
+            icon: c.icon || "",
+            collapsed: c.collapsed,
+            items: c.items.map((it) => ({
+              id: it.id,
+              name: it.name,
+              rate: it.rate,
+              quantity: it.quantity,
+              rateType: it.rateType,
+              ...(it.subcategory ? { subcategory: it.subcategory } : {}),
+            })),
+          }));
+          setCategories(hydrated);
+          saveBudget(id, hydrated); // refresh local cache
+          return;
+        }
+
+        // API empty — try localStorage migration
+        const cached = loadBudget(id);
+        if (cached) {
+          setCategories(cached);
+          // Push to DB so every browser sees it going forward
+          void fetch(`/api/projects/${id}/budget-plan`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              categories: cached.map((c) => ({
+                key: c.id,
+                label: c.label,
+                icon: c.icon,
+                collapsed: c.collapsed,
+                items: c.items.map((it) => ({
+                  name: it.name,
+                  rate: it.rate,
+                  quantity: it.quantity,
+                  rateType: it.rateType,
+                  subcategory: it.subcategory ?? null,
+                })),
+              })),
+            }),
+          });
+        }
+      } catch {
+        // Offline or error — fall back to localStorage
+        const cached = loadBudget(id);
+        if (!cancelled && cached) setCategories(cached);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [id]);
 
   const { data: project } = useQuery({
@@ -592,10 +656,37 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
 
   /* ── Mutations ─────────────────────────────────── */
 
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persist = useCallback((next: BudgetCategory[]) => {
     setCategories(next);
-    saveBudget(id, next);
-  }, [id]);
+    saveBudget(id, next); // write-through local cache for offline / instant reloads
+
+    // Debounced server save (full replace)
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      fetch(`/api/projects/${id}/budget-plan`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categories: next.map((c) => ({
+            key: c.id,
+            label: c.label,
+            icon: c.icon,
+            collapsed: c.collapsed,
+            items: c.items.map((it) => ({
+              name: it.name,
+              rate: it.rate,
+              quantity: it.quantity,
+              rateType: it.rateType,
+              subcategory: it.subcategory ?? null,
+            })),
+          })),
+        }),
+      })
+        .then(() => { qc.invalidateQueries({ queryKey: ["budget-plan", id] }); })
+        .catch(() => { /* offline ok — local cache retains it */ });
+    }, 500);
+  }, [id, qc]);
 
   const toggleCollapse = (catId: string) => {
     persist(categories.map((c) => c.id === catId ? { ...c, collapsed: !c.collapsed } : c));
