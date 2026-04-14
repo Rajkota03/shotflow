@@ -8,47 +8,49 @@ import type {
   ScheduleShootDay,
 } from "@/components/schedule/types";
 
+/* ── Budget Planning line-item shape (mirrors budget/page.tsx) ── */
+type RateType = "daily" | "weekly" | "flat";
+interface BudgetLineItem {
+  id: string;
+  name: string;
+  rate: number;
+  quantity: number;
+  rateType: RateType;
+  subcategory?: string;
+}
+interface BudgetCategory {
+  id: string;
+  label: string;
+  icon?: string;
+  items: BudgetLineItem[];
+  collapsed?: boolean;
+}
+
+/* ── Category display mapping (matches Budget Planning page) ─── */
 type CategoryKey =
-  | "location"
-  | "permits"
-  | "equipment"
+  | "talent"
   | "crew"
-  | "cast"
-  | "travel"
-  | "lodging"
-  | "catering";
+  | "equipment"
+  | "locations"
+  | "art"
+  | "post"
+  | "operations";
 
 const CATEGORIES: { key: CategoryKey; label: string; tone: string }[] = [
-  { key: "location", label: "Location", tone: "#7dd3fc" },
-  { key: "permits", label: "Permits", tone: "#fbbf24" },
-  { key: "equipment", label: "Equipment", tone: "#a78bfa" },
+  { key: "talent", label: "Talent", tone: "#34d399" },
   { key: "crew", label: "Crew", tone: "#f472b6" },
-  { key: "cast", label: "Cast", tone: "#34d399" },
-  { key: "travel", label: "Travel", tone: "#fb923c" },
-  { key: "lodging", label: "Lodging", tone: "#94a3b8" },
-  { key: "catering", label: "Catering", tone: "#facc15" },
+  { key: "equipment", label: "Equipment", tone: "#a78bfa" },
+  { key: "locations", label: "Locations", tone: "#7dd3fc" },
+  { key: "art", label: "Art", tone: "#fb923c" },
+  { key: "post", label: "Post", tone: "#facc15" },
+  { key: "operations", label: "Ops", tone: "#94a3b8" },
 ];
 
-const STORAGE_KEY = "shotflow.budgetBar.v1";
+const PREFS_KEY = "shotflow.budgetBar.v2";
 
 interface Prefs {
   enabled: Record<CategoryKey, boolean>;
   collapsed: boolean;
-}
-
-function loadPrefs(): Prefs {
-  if (typeof window === "undefined") return defaultPrefs();
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return defaultPrefs();
-    const parsed = JSON.parse(raw) as Partial<Prefs>;
-    return {
-      enabled: { ...defaultPrefs().enabled, ...(parsed.enabled || {}) },
-      collapsed: !!parsed.collapsed,
-    };
-  } catch {
-    return defaultPrefs();
-  }
 }
 
 function defaultPrefs(): Prefs {
@@ -61,12 +63,46 @@ function defaultPrefs(): Prefs {
   };
 }
 
+function loadPrefs(): Prefs {
+  if (typeof window === "undefined") return defaultPrefs();
+  try {
+    const raw = window.localStorage.getItem(PREFS_KEY);
+    if (!raw) return defaultPrefs();
+    const parsed = JSON.parse(raw) as Partial<Prefs>;
+    return {
+      enabled: { ...defaultPrefs().enabled, ...(parsed.enabled || {}) },
+      collapsed: !!parsed.collapsed,
+    };
+  } catch {
+    return defaultPrefs();
+  }
+}
+
 function fmt(n: number, symbol: string): string {
-  if (n === 0) return `${symbol}0`;
+  if (!Number.isFinite(n) || n === 0) return `${symbol}0`;
   if (n >= 10_000_000) return `${symbol}${(n / 10_000_000).toFixed(2)}Cr`;
   if (n >= 100_000) return `${symbol}${(n / 100_000).toFixed(2)}L`;
   if (n >= 1000) return `${symbol}${(n / 1000).toFixed(1)}K`;
   return `${symbol}${Math.round(n)}`;
+}
+
+/** Per-day burn for a single line item */
+function itemPerDayBurn(item: BudgetLineItem): number {
+  switch (item.rateType) {
+    case "daily":
+      return item.rate * item.quantity; // applies every shoot day
+    case "weekly":
+      return (item.rate * item.quantity) / 5; // per workday
+    case "flat":
+      return 0; // flat items counted separately as Fixed
+    default:
+      return 0;
+  }
+}
+
+/** Flat portion of a line item (one-time project cost) */
+function itemFlat(item: BudgetLineItem): number {
+  return item.rateType === "flat" ? item.rate * item.quantity : 0;
 }
 
 interface BudgetBarProps {
@@ -78,13 +114,39 @@ interface BudgetBarProps {
 
 export function BudgetBar({ days, board, project, onCellClick }: BudgetBarProps) {
   const [prefs, setPrefs] = useState<Prefs>(() => defaultPrefs());
+  const [budget, setBudget] = useState<BudgetCategory[] | null>(null);
   const cellsRef = useRef<HTMLDivElement | null>(null);
 
+  // Load prefs + budget from localStorage (client only)
   useEffect(() => {
     setPrefs(loadPrefs());
   }, []);
 
-  // Sync horizontal scroll with the schedule grid above
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const read = () => {
+      try {
+        const raw = window.localStorage.getItem(`shotflow-budget-${project.id}`);
+        setBudget(raw ? (JSON.parse(raw) as BudgetCategory[]) : null);
+      } catch {
+        setBudget(null);
+      }
+    };
+    read();
+    // Refresh when user returns to the tab (e.g., after editing Budget page)
+    const onFocus = () => read();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === `shotflow-budget-${project.id}`) read();
+    };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [project.id]);
+
+  // Sync horizontal scroll with schedule grid
   useEffect(() => {
     const cells = cellsRef.current;
     if (!cells) return;
@@ -107,7 +169,6 @@ export function BudgetBar({ days, board, project, onCellClick }: BudgetBarProps)
 
     grid.addEventListener("scroll", onGridScroll, { passive: true });
     cells.addEventListener("scroll", onCellsScroll, { passive: true });
-    // Align initially
     cells.scrollLeft = grid.scrollLeft;
     return () => {
       grid.removeEventListener("scroll", onGridScroll);
@@ -117,74 +178,59 @@ export function BudgetBar({ days, board, project, onCellClick }: BudgetBarProps)
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+    window.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
   }, [prefs]);
 
   const symbol = project.currency === "INR" ? "₹" : "$";
   const cap = project.budgetCap || 0;
 
-  // Permits applied only on first day a location appears
-  const locationFirstDay = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const day of days) {
-      const lid = day.location?.id;
-      if (lid && !map.has(lid)) map.set(lid, day.id);
+  /** Base per-day burn by category, derived from Budget Planning line items */
+  const baseBurnByCategory = useMemo(() => {
+    const byCat: Record<CategoryKey, number> = {
+      talent: 0, crew: 0, equipment: 0, locations: 0, art: 0, post: 0, operations: 0,
+    };
+    if (!budget) return byCat;
+    for (const cat of budget) {
+      const key = cat.id as CategoryKey;
+      if (!(key in byCat)) continue;
+      const burn = cat.items.reduce((s, item) => s + itemPerDayBurn(item), 0);
+      byCat[key] = burn;
     }
-    return map;
-  }, [days]);
+    return byCat;
+  }, [budget]);
 
-  // Per-day crew (everyone with paymentMode = per_day)
-  const perDayCrewTotal = useMemo(() => {
-    return (project.crewMembers || [])
-      .filter((c) => c.paymentMode === "per_day")
-      .reduce((s, c) => s + (c.dayRate || 0), 0);
-  }, [project.crewMembers]);
+  /** Flat (one-time) total across all categories */
+  const flatTotal = useMemo(() => {
+    if (!budget) return 0;
+    let sum = 0;
+    for (const cat of budget) {
+      for (const item of cat.items) sum += itemFlat(item);
+    }
+    return sum;
+  }, [budget]);
 
-  // Fixed (package) costs sit aside the per-day bar
-  const fixedTotal = useMemo(() => {
-    const crew = (project.crewMembers || [])
-      .filter((c) => c.paymentMode === "package")
-      .reduce((s, c) => s + (c.packageFee || 0), 0);
-    const cast = (project.castMembers || [])
-      .filter((c) => c.paymentMode === "package")
-      .reduce((s, c) => s + (c.packageFee || 0), 0);
-    return crew + cast;
-  }, [project.crewMembers, project.castMembers]);
-
+  /** Per-day breakdown: baseline burn + day-specific overrides */
   function dayBreakdown(day: ScheduleShootDay): Record<CategoryKey, number> {
     const dayScenes = board[day.id] || [];
-    const loc = day.location?.dailyRentalCost || 0;
-    const permits =
-      day.location?.id && locationFirstDay.get(day.location.id) === day.id
-        ? day.location?.permitCost || 0
-        : 0;
-    const equipment = (day.equipmentLinks || []).reduce(
+    const active = dayScenes.length > 0;
+    const b: Record<CategoryKey, number> = {
+      talent: active ? baseBurnByCategory.talent : 0,
+      crew: active ? baseBurnByCategory.crew : 0,
+      equipment: active ? baseBurnByCategory.equipment : 0,
+      locations: active ? baseBurnByCategory.locations : 0,
+      art: active ? baseBurnByCategory.art : 0,
+      post: baseBurnByCategory.post,
+      operations: active ? baseBurnByCategory.operations : 0,
+    };
+    // Day-specific additions entered on the shoot day
+    b.locations += day.location?.dailyRentalCost || 0;
+    const equipExtra = (day.equipmentLinks || []).reduce(
       (s, l) => s + (l.equipment?.dailyRental || 0) * (l.quantity || 1),
       0,
     );
-    const seenCast = new Set<string>();
-    let castSum = 0;
-    for (const sc of dayScenes) {
-      for (const link of sc.castLinks || []) {
-        const cm = link.castMember;
-        if (!cm) continue;
-        if (cm.paymentMode === "package") continue;
-        const key = cm.id || cm.name;
-        if (seenCast.has(key)) continue;
-        seenCast.add(key);
-        castSum += cm.dayRate || 0;
-      }
-    }
-    return {
-      location: loc,
-      permits,
-      equipment,
-      crew: dayScenes.length > 0 ? perDayCrewTotal : 0,
-      cast: castSum,
-      travel: day.travelCost || 0,
-      lodging: day.lodgingCost || 0,
-      catering: day.cateringCost || 0,
-    };
+    b.equipment += equipExtra;
+    b.operations += (day.travelCost || 0) + (day.lodgingCost || 0) + (day.cateringCost || 0);
+    return b;
   }
 
   function dayTotal(day: ScheduleShootDay): number {
@@ -199,15 +245,17 @@ export function BudgetBar({ days, board, project, onCellClick }: BudgetBarProps)
   const grandDayOf = useMemo(
     () => days.reduce((s, d) => s + dayTotal(d), 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [days, board, prefs, perDayCrewTotal, locationFirstDay],
+    [days, board, prefs, baseBurnByCategory],
   );
-  const grandTotal = grandDayOf + fixedTotal;
+  const grandTotal = grandDayOf + flatTotal;
   const overCap = cap > 0 && grandTotal > cap;
   const remaining = cap > 0 ? cap - grandTotal : 0;
 
   const toggle = (key: CategoryKey) => {
     setPrefs((p) => ({ ...p, enabled: { ...p.enabled, [key]: !p.enabled[key] } }));
   };
+
+  const hasBudgetData = budget !== null && budget.length > 0;
 
   if (prefs.collapsed) {
     return (
@@ -221,7 +269,7 @@ export function BudgetBar({ days, board, project, onCellClick }: BudgetBarProps)
           <span className="budget-bar__expand-label">Budget</span>
           <span className="budget-bar__expand-total">
             Day-of {fmt(grandDayOf, symbol)}
-            {fixedTotal > 0 && <span className="budget-bar__expand-fixed"> + Fixed {fmt(fixedTotal, symbol)}</span>}
+            {flatTotal > 0 && <span className="budget-bar__expand-fixed"> + Fixed {fmt(flatTotal, symbol)}</span>}
             <span className="budget-bar__expand-grand"> = {fmt(grandTotal, symbol)}</span>
           </span>
           {cap > 0 && (
@@ -236,7 +284,6 @@ export function BudgetBar({ days, board, project, onCellClick }: BudgetBarProps)
 
   return (
     <div className="budget-bar">
-      {/* Header row: collapse + chips + grand totals */}
       <div className="budget-bar__header">
         <button
           type="button"
@@ -266,10 +313,10 @@ export function BudgetBar({ days, board, project, onCellClick }: BudgetBarProps)
             <span className="budget-bar__total-label">Day-of</span>
             <span className="budget-bar__total-value">{fmt(grandDayOf, symbol)}</span>
           </span>
-          {fixedTotal > 0 && (
+          {flatTotal > 0 && (
             <span className="budget-bar__total-block">
               <span className="budget-bar__total-label">Fixed</span>
-              <span className="budget-bar__total-value">{fmt(fixedTotal, symbol)}</span>
+              <span className="budget-bar__total-value">{fmt(flatTotal, symbol)}</span>
             </span>
           )}
           <span className="budget-bar__total-block budget-bar__total-block--grand">
@@ -284,15 +331,17 @@ export function BudgetBar({ days, board, project, onCellClick }: BudgetBarProps)
         </div>
       </div>
 
-      {/* Per-day cells — aligned to day columns */}
       <div className="budget-bar__cells" ref={cellsRef}>
         {days.map((day) => {
           const b = dayBreakdown(day);
           const total = dayTotal(day);
           const enabledList = CATEGORIES.filter((c) => prefs.enabled[c.key] && b[c.key] > 0);
           const isEmpty = total === 0;
+          const hint = !hasBudgetData
+            ? "Open Budget Planning to set line items"
+            : "Click to add day-specific costs";
           const title = isEmpty
-            ? "No costs entered — click to open Day Review and add location/travel/lodging/catering"
+            ? hint
             : enabledList.map((c) => `${c.label}: ${fmt(b[c.key], symbol)}`).join(" · ");
           return (
             <button
@@ -307,7 +356,7 @@ export function BudgetBar({ days, board, project, onCellClick }: BudgetBarProps)
                 {isEmpty ? <span className="budget-bar__cell-hint">Add costs</span> : fmt(total, symbol)}
               </div>
               <div className="budget-bar__cell-stack">
-                {enabledList.slice(0, 4).map((c) => (
+                {enabledList.slice(0, 5).map((c) => (
                   <div
                     key={c.key}
                     className="budget-bar__cell-bar"
